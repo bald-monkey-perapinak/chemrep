@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+coverage/
+.pytest_cache/
+htmlcov/
+
+# Audio / model files (large binaries)
+*.wav
+*.mp3
+*.pt
+*.onnx
+*.bin
+
+# Docker volumes
+postgres_data/
+minio_data/

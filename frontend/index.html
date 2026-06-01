@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ХимТьютор — Кабинет преподавателя</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.6.0/dist/tabler-icons.min.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --color-bg: #f8f8f7;
+      --color-surface: #ffffff;
+      --color-border: rgba(0,0,0,0.1);
+      --color-border-md: rgba(0,0,0,0.18);
+      --color-text: #1a1a18;
+      --color-text-muted: #6b6b66;
+      --color-accent: #185FA5;
+      --color-accent-bg: #E6F1FB;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+    }
+    body { font-family: system-ui, -apple-system, sans-serif; color: var(--color-text); background: var(--color-bg); }
+    .app { display: flex; height: 100vh; }
+    .sidebar { width: 220px; background: var(--color-surface); border-right: 0.5px solid var(--color-border); display: flex; flex-direction: column; flex-shrink: 0; }
+    .logo { padding: 20px 16px 16px; border-bottom: 0.5px solid var(--color-border); }
+    .logo-title { font-size: 15px; font-weight: 600; }
+    .logo-sub { font-size: 12px; color: var(--color-text-muted); margin-top: 2px; }
+    .nav { padding: 8px; flex: 1; }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-md); cursor: pointer; font-size: 14px; color: var(--color-text-muted); transition: background 0.15s; margin-bottom: 2px; border: none; background: none; width: 100%; text-align: left; }
+    .nav-item:hover { background: var(--color-bg); color: var(--color-text); }
+    .nav-item.active { background: var(--color-bg); color: var(--color-text); font-weight: 500; }
+    .nav-item i { font-size: 18px; }
+    .sidebar-footer { padding: 12px 16px; border-top: 0.5px solid var(--color-border); font-size: 12px; color: var(--color-text-muted); }
+    .main { flex: 1; overflow: auto; display: flex; flex-direction: column; }
+    .topbar { background: var(--color-surface); border-bottom: 0.5px solid var(--color-border); padding: 14px 24px; display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    .topbar-title { font-size: 17px; font-weight: 500; }
+    .content { padding: 24px; flex: 1; }
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: var(--radius-md); font-size: 13px; cursor: pointer; border: 0.5px solid var(--color-border-md); background: var(--color-surface); color: var(--color-text); font-family: inherit; transition: background 0.15s; }
+    .btn:hover { background: var(--color-bg); }
+    .btn-primary { background: var(--color-text); color: var(--color-surface); border-color: transparent; }
+    .btn-primary:hover { opacity: 0.88; }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn-danger { color: #A32D2D; border-color: #F7C1C1; }
+    .btn-danger:hover { background: #FCEBEB; }
+    .card { background: var(--color-surface); border: 0.5px solid var(--color-border); border-radius: var(--radius-lg); padding: 16px 20px; }
+    .section { display: none; }
+    .section.active { display: block; }
+    .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+    .stat-card { background: var(--color-bg); border-radius: var(--radius-md); padding: 14px 16px; }
+    .stat-label { font-size: 12px; color: var(--color-text-muted); margin-bottom: 6px; }
+    .stat-value { font-size: 24px; font-weight: 500; }
+    .upcoming-list { display: flex; flex-direction: column; gap: 10px; }
+    .lesson-row { display: flex; align-items: center; gap: 14px; padding: 12px 16px; background: var(--color-surface); border: 0.5px solid var(--color-border); border-radius: var(--radius-md); }
+    .lesson-time { font-size: 12px; color: var(--color-text-muted); min-width: 80px; }
+    .lesson-info { flex: 1; }
+    .lesson-name { font-size: 14px; font-weight: 500; }
+    .lesson-topic { font-size: 12px; color: var(--color-text-muted); margin-top: 2px; }
+    .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; }
+    .badge-zoom { background: #E6F1FB; color: #185FA5; }
+    .badge-ya { background: #FAEEDA; color: #854F0B; }
+    .badge-active { background: #EAF3DE; color: #3B6D11; }
+    .badge-upcoming { background: #EEEDFE; color: #534AB7; }
+    .cal-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+    .cal-nav { display: flex; gap: 4px; }
+    .cal-month { font-size: 17px; font-weight: 500; min-width: 160px; }
+    .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: var(--color-border); border: 0.5px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; }
+    .cal-day-header { background: var(--color-bg); padding: 8px; text-align: center; font-size: 12px; color: var(--color-text-muted); font-weight: 500; }
+    .cal-day { background: var(--color-surface); padding: 8px; min-height: 80px; cursor: pointer; transition: background 0.1s; }
+    .cal-day:hover { background: var(--color-bg); }
+    .cal-day.other-month { opacity: 0.35; }
+    .cal-day.today .day-num { background: var(--color-text); color: var(--color-surface); border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; }
+    .day-num { font-size: 13px; font-weight: 500; margin-bottom: 4px; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; }
+    .day-event { font-size: 10px; background: #EEEDFE; color: #534AB7; border-radius: 3px; padding: 1px 4px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .day-event.zoom { background: #E6F1FB; color: #185FA5; }
+    .day-event.ya { background: #FAEEDA; color: #854F0B; }
+    .lessons-table { width: 100%; border-collapse: collapse; }
+    .lessons-table th { text-align: left; font-size: 12px; color: var(--color-text-muted); font-weight: 500; padding: 8px 12px; border-bottom: 0.5px solid var(--color-border); }
+    .lessons-table td { padding: 12px; border-bottom: 0.5px solid var(--color-border); font-size: 13px; }
+    .lessons-table tr:last-child td { border-bottom: none; }
+    .lessons-table tr:hover td { background: var(--color-bg); }
+    .link-btn { font-size: 12px; color: #185FA5; text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+    .kb-layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; }
+    .kb-tree { background: var(--color-surface); border: 0.5px solid var(--color-border); border-radius: var(--radius-lg); padding: 12px; overflow: auto; max-height: 520px; }
+    .tree-item { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border-radius: var(--radius-md); cursor: pointer; font-size: 13px; }
+    .tree-item:hover { background: var(--color-bg); }
+    .tree-item.selected { background: var(--color-bg); font-weight: 500; }
+    .tree-item i { font-size: 15px; color: var(--color-text-muted); }
+    .kb-detail { display: flex; flex-direction: column; gap: 12px; }
+    .kb-files { display: flex; flex-direction: column; gap: 8px; }
+    .file-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--color-surface); border: 0.5px solid var(--color-border); border-radius: var(--radius-md); }
+    .file-icon { font-size: 20px; color: var(--color-text-muted); }
+    .file-info { flex: 1; }
+    .file-name { font-size: 13px; font-weight: 500; }
+    .file-meta { font-size: 11px; color: var(--color-text-muted); margin-top: 1px; }
+    .empty-state { text-align: center; padding: 40px; color: var(--color-text-muted); font-size: 14px; }
+    .empty-state i { font-size: 32px; display: block; margin-bottom: 8px; opacity: 0.4; }
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; z-index: 100; }
+    .modal { background: var(--color-surface); border-radius: var(--radius-lg); border: 0.5px solid var(--color-border); padding: 24px; width: 480px; max-width: 95%; }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .modal-title { font-size: 16px; font-weight: 500; }
+    .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 13px; color: var(--color-text-muted); margin-bottom: 6px; }
+    .form-input { width: 100%; padding: 8px 12px; border: 0.5px solid var(--color-border-md); border-radius: var(--radius-md); font-size: 14px; font-family: inherit; background: var(--color-surface); color: var(--color-text); }
+    .form-input:focus { outline: none; border-color: var(--color-accent); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+    .platform-toggle { display: flex; gap: 8px; }
+    .platform-btn { padding: 7px 16px; border-radius: var(--radius-md); font-size: 13px; cursor: pointer; border: 0.5px solid var(--color-border-md); background: var(--color-surface); color: var(--color-text-muted); font-family: inherit; transition: all 0.15s; }
+    .platform-btn.active { border-color: #185FA5; background: #E6F1FB; color: #185FA5; font-weight: 500; }
+  </style>
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-title">⚗️ ХимТьютор</div>
+      <div class="logo-sub">Кабинет преподавателя</div>
+    </div>
+    <nav class="nav">
+      <button class="nav-item active" onclick="showSection('dashboard', this)"><i class="ti ti-layout-dashboard"></i> Обзор</button>
+      <button class="nav-item" onclick="showSection('calendar', this)"><i class="ti ti-calendar"></i> Календарь</button>
+      <button class="nav-item" onclick="showSection('lessons', this)"><i class="ti ti-book"></i> Занятия</button>
+      <button class="nav-item" onclick="showSection('knowledge', this)"><i class="ti ti-folder"></i> База знаний</button>
+    </nav>
+    <div class="sidebar-footer">Иванова А.П.</div>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <span class="topbar-title" id="topbar-title">Обзор</span>
+      <button class="btn btn-primary" onclick="openNewLesson()"><i class="ti ti-plus"></i> Новое занятие</button>
+    </div>
+    <div class="content">
+      <div class="section active" id="section-dashboard">
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-label">Занятий сегодня</div><div class="stat-value">2</div></div>
+          <div class="stat-card"><div class="stat-label">На этой неделе</div><div class="stat-value">7</div></div>
+          <div class="stat-card"><div class="stat-label">Учеников</div><div class="stat-value">12</div></div>
+          <div class="stat-card"><div class="stat-label">Тем в базе</div><div class="stat-value">34</div></div>
+        </div>
+        <div class="card">
+          <div style="font-size:14px;font-weight:500;margin-bottom:14px;display:flex;align-items:center;gap:8px;"><i class="ti ti-calendar-event"></i> Ближайшие занятия</div>
+          <div class="upcoming-list" id="upcoming-list"></div>
+        </div>
+      </div>
+      <div class="section" id="section-calendar">
+        <div class="cal-header">
+          <div class="cal-nav">
+            <button class="btn btn-sm" onclick="changeMonth(-1)"><i class="ti ti-chevron-left"></i></button>
+            <button class="btn btn-sm" onclick="changeMonth(1)"><i class="ti ti-chevron-right"></i></button>
+          </div>
+          <span class="cal-month" id="cal-month-label"></span>
+          <button class="btn btn-sm" onclick="goToday()">Сегодня</button>
+        </div>
+        <div class="cal-grid" id="cal-grid"></div>
+      </div>
+      <div class="section" id="section-lessons">
+        <div class="card" style="padding:0;overflow:hidden;">
+          <table class="lessons-table">
+            <thead><tr><th>Дата и время</th><th>Ученик</th><th>Тема</th><th>Платформа</th><th>Ссылка</th><th>Статус</th><th></th></tr></thead>
+            <tbody id="lessons-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="section" id="section-knowledge">
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:14px;">
+          <button class="btn btn-sm" onclick="addFolder()"><i class="ti ti-folder-plus"></i> Папка</button>
+          <button class="btn btn-sm btn-primary" onclick="addFile()"><i class="ti ti-upload"></i> Загрузить файл</button>
+        </div>
+        <div class="kb-layout">
+          <div class="kb-tree" id="kb-tree"></div>
+          <div class="kb-detail" id="kb-detail"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-overlay" id="modal" style="display:none;">
+  <div class="modal">
+    <div class="modal-header"><span class="modal-title">Новое занятие</span><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
+    <div class="form-group"><label class="form-label">Ученик</label><input class="form-input" id="f-student" placeholder="Имя ученика" /></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Дата</label><input class="form-input" id="f-date" type="date" /></div>
+      <div class="form-group"><label class="form-label">Время</label><input class="form-input" id="f-time" type="time" value="16:00" /></div>
+    </div>
+    <div class="form-group"><label class="form-label">Тема занятия</label><input class="form-input" id="f-topic" placeholder="Например: Алканы — строение и свойства" /></div>
+    <div class="form-group"><label class="form-label">Платформа</label><div class="platform-toggle"><button class="platform-btn active" id="p-zoom" onclick="setPlatform('zoom')">Zoom</button><button class="platform-btn" id="p-ya" onclick="setPlatform('ya')">Яндекс Телемост</button></div></div>
+    <div class="form-group"><label class="form-label">Ссылка на конференцию</label><input class="form-input" id="f-link" placeholder="https://zoom.us/j/..." /></div>
+    <div class="form-actions"><button class="btn" onclick="closeModal()">Отмена</button><button class="btn btn-primary" onclick="saveLesson()">Создать занятие</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="folder-modal" style="display:none;">
+  <div class="modal" style="width:360px;">
+    <div class="modal-header"><span class="modal-title" id="folder-modal-title">Новая папка</span><button class="btn btn-sm" onclick="closeFolderModal()"><i class="ti ti-x"></i></button></div>
+    <div class="form-group"><label class="form-label">Название</label><input class="form-input" id="f-folder-name" placeholder="Название папки" /></div>
+    <div class="form-actions"><button class="btn" onclick="closeFolderModal()">Отмена</button><button class="btn btn-primary" onclick="confirmFolder()">Создать</button></div>
+  </div>
+</div>
+
+<script>
+const MONTHS=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
+const DAYS=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
+let currentMonth=new Date().getMonth(),currentYear=new Date().getFullYear(),selectedPlatform='zoom',selectedKbNode=null,folderModalTarget=null;
+let lessons=[
+  {id:1,student:'Петров Михаил',date:'2026-06-02',time:'16:00',topic:'Алканы — строение',platform:'zoom',link:'https://zoom.us/j/123456',status:'upcoming'},
+  {id:2,student:'Сидорова Анна',date:'2026-06-02',time:'18:30',topic:'Степени окисления',platform:'ya',link:'https://telemost.yandex.ru/j/abc',status:'upcoming'},
+  {id:3,student:'Козлов Дмитрий',date:'2026-06-03',time:'15:00',topic:'Реакции замещения',platform:'zoom',link:'https://zoom.us/j/789',status:'upcoming'},
+  {id:4,student:'Новикова Елена',date:'2026-05-28',time:'17:00',topic:'Периодический закон',platform:'zoom',link:'https://zoom.us/j/555',status:'done'},
+];
+let kbTree=[
+  {id:'c8',type:'class',name:'8 класс',children:[{id:'c8-org',type:'section',name:'Основные понятия',children:[{id:'c8-org-1',type:'topic',name:'Атом и молекула',files:[{name:'Конспект_атом.pdf',size:'1.2 МБ',date:'15.05.2026'},{name:'Схема_строения.png',size:'340 КБ',date:'15.05.2026'}]}]}]},
+  {id:'c9',type:'class',name:'9 класс',children:[{id:'c9-reac',type:'section',name:'Типы реакций',children:[{id:'c9-reac-1',type:'topic',name:'Реакции замещения',files:[{name:'Конспект_замещение.pdf',size:'890 КБ',date:'10.05.2026'}]},{id:'c9-reac-2',type:'topic',name:'Реакции обмена',files:[]}]}]},
+  {id:'c10',type:'class',name:'10 класс',children:[{id:'c10-org',type:'section',name:'Органическая химия',children:[{id:'c10-org-alk',type:'topic',name:'Алканы',files:[{name:'Алканы_конспект.pdf',size:'1.5 МБ',date:'01.06.2026'},{name:'Таблица_свойств.xlsx',size:'220 КБ',date:'01.06.2026'},{name:'Домашнее_задание.pdf',size:'500 КБ',date:'01.06.2026'}]},{id:'c10-org-alk2',type:'topic',name:'Алкены',files:[]}]}]},
+];
+function showSection(id,el){document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));document.getElementById('section-'+id).classList.add('active');el.classList.add('active');const t={dashboard:'Обзор',calendar:'Календарь',lessons:'Занятия',knowledge:'База знаний'};document.getElementById('topbar-title').textContent=t[id];if(id==='calendar')renderCalendar();if(id==='lessons')renderLessons();if(id==='knowledge')renderKb();if(id==='dashboard')renderDashboard();}
+function renderDashboard(){const today=new Date().toISOString().slice(0,10);const upcoming=lessons.filter(l=>l.date>=today&&l.status!=='done').sort((a,b)=>a.date+a.time>b.date+b.time?1:-1).slice(0,5);const ul=document.getElementById('upcoming-list');ul.innerHTML=upcoming.length?upcoming.map(l=>`<div class="lesson-row"><span class="lesson-time">${fmtDate(l.date)}<br>${l.time}</span><div class="lesson-info"><div class="lesson-name">${l.student}</div><div class="lesson-topic">${l.topic}</div></div><span class="badge ${l.platform==='zoom'?'badge-zoom':'badge-ya'}">${l.platform==='zoom'?'Zoom':'Телемост'}</span><a href="${l.link}" class="btn btn-sm" target="_blank"><i class="ti ti-external-link"></i> Открыть</a></div>`).join(''):'<div class="empty-state"><i class="ti ti-calendar-off"></i>Нет предстоящих занятий</div>';}
+function fmtDate(d){const[y,m,day]=d.split('-');const mo=['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];return`${parseInt(day)} ${mo[parseInt(m)-1]}`;}
+function renderCalendar(){document.getElementById('cal-month-label').textContent=MONTHS[currentMonth]+' '+currentYear;const grid=document.getElementById('cal-grid');grid.innerHTML=DAYS.map(d=>`<div class="cal-day-header">${d}</div>`).join('');const first=new Date(currentYear,currentMonth,1);let startDow=first.getDay();if(startDow===0)startDow=7;const dim=new Date(currentYear,currentMonth+1,0).getDate();const dip=new Date(currentYear,currentMonth,0).getDate();const todayStr=new Date().toISOString().slice(0,10);let cells=[];for(let i=startDow-1;i>0;i--)cells.push({d:dip-i+1,month:currentMonth-1,other:true});for(let i=1;i<=dim;i++)cells.push({d:i,month:currentMonth,other:false});let rem=42-cells.length;for(let i=1;i<=rem;i++)cells.push({d:i,month:currentMonth+1,other:true});grid.innerHTML+=cells.map(c=>{const ds=`${currentYear}-${String(c.month+1).padStart(2,'0')}-${String(c.d).padStart(2,'0')}`;const isT=ds===todayStr&&!c.other;const dl=lessons.filter(l=>l.date===ds);return`<div class="cal-day${c.other?' other-month':''}${isT?' today':''}" onclick="calDayClick('${ds}')"><div class="day-num">${c.d}</div>${dl.map(l=>`<div class="day-event ${l.platform}">${l.time} ${l.student.split(' ')[0]}</div>`).join('')}</div>`;}).join('');}
+function calDayClick(ds){document.getElementById('f-date').value=ds;openNewLesson();}
+function changeMonth(d){currentMonth+=d;if(currentMonth>11){currentMonth=0;currentYear++;}if(currentMonth<0){currentMonth=11;currentYear--;}renderCalendar();}
+function goToday(){currentMonth=new Date().getMonth();currentYear=new Date().getFullYear();renderCalendar();}
+function renderLessons(){const s=[...lessons].sort((a,b)=>a.date+a.time<b.date+b.time?1:-1);document.getElementById('lessons-tbody').innerHTML=s.map(l=>`<tr><td>${fmtDate(l.date)}, ${l.time}</td><td style="font-weight:500">${l.student}</td><td>${l.topic}</td><td><span class="badge ${l.platform==='zoom'?'badge-zoom':'badge-ya'}">${l.platform==='zoom'?'Zoom':'Яндекс Телемост'}</span></td><td><a href="${l.link}" class="link-btn" target="_blank"><i class="ti ti-external-link"></i> Открыть</a></td><td><span class="badge ${l.status==='done'?'badge-active':'badge-upcoming'}">${l.status==='done'?'Завершено':'Предстоит'}</span></td><td><button class="btn btn-sm btn-danger" onclick="deleteLesson(${l.id})"><i class="ti ti-trash"></i></button></td></tr>`).join('');}
+function deleteLesson(id){lessons=lessons.filter(l=>l.id!==id);renderLessons();renderDashboard();}
+function renderKb(){document.getElementById('kb-tree').innerHTML=renderTreeNodes(kbTree,0);renderKbDetail(null);}
+function renderTreeNodes(nodes,depth){return nodes.map(n=>{const indent=depth>0?`style="padding-left:${depth*16+8}px"`:'';const icon=n.type==='class'?'ti-school':n.type==='section'?'ti-folder':n.type==='topic'?'ti-file-text':'ti-file';let h=`<div class="tree-item${selectedKbNode===n.id?' selected':''}" ${indent} onclick="selectKb('${n.id}')"><i class="ti ${icon}"></i>${n.name}</div>`;if(n.children)h+=renderTreeNodes(n.children,depth+1);return h;}).join('');}
+function selectKb(id){selectedKbNode=id;const node=findNode(kbTree,id);renderKb();renderKbDetail(node);}
+function findNode(nodes,id){for(const n of nodes){if(n.id===id)return n;if(n.children){const f=findNode(n.children,id);if(f)return f;}}return null;}
+function renderKbDetail(node){const el=document.getElementById('kb-detail');if(!node){el.innerHTML=`<div class="card"><div class="empty-state"><i class="ti ti-folder"></i>Выберите папку или тему слева</div></div>`;return;}if(node.type==='topic'){const files=node.files||[];el.innerHTML=`<div class="card"><div style="font-size:15px;font-weight:500;margin-bottom:4px;">${node.name}</div><div style="font-size:12px;color:var(--color-text-muted);margin-bottom:16px;">Тема · ${files.length} файлов</div><div class="kb-files">${files.length?files.map(f=>`<div class="file-row"><i class="ti ${fileIcon(f.name)} file-icon"></i><div class="file-info"><div class="file-name">${f.name}</div><div class="file-meta">${f.size} · ${f.date}</div></div><button class="btn btn-sm"><i class="ti ti-download"></i></button><button class="btn btn-sm btn-danger" onclick="deleteFile('${node.id}','${f.name}')"><i class="ti ti-trash"></i></button></div>`).join(''):`<div class="empty-state"><i class="ti ti-file-off"></i>Нет файлов</div>`}</div><div style="margin-top:12px;"><button class="btn btn-sm btn-primary" onclick="addFile()"><i class="ti ti-upload"></i> Загрузить файл</button></div></div>`;}else{const count=countChildren(node);el.innerHTML=`<div class="card"><div style="font-size:15px;font-weight:500;margin-bottom:4px;">${node.name}</div><div style="font-size:12px;color:var(--color-text-muted);margin-bottom:16px;">${typeLabel(node.type)} · ${count} элементов</div><button class="btn btn-sm btn-primary" onclick="addFolderInside('${node.id}')"><i class="ti ti-folder-plus"></i> Добавить подпапку</button></div>`;}}
+function fileIcon(n){if(n.endsWith('.pdf'))return'ti-file-type-pdf';if(n.endsWith('.xlsx')||n.endsWith('.csv'))return'ti-file-spreadsheet';if(n.endsWith('.png')||n.endsWith('.jpg'))return'ti-photo';return'ti-file';}
+function typeLabel(t){return t==='class'?'Класс':t==='section'?'Раздел':'Тема';}
+function countChildren(n){if(!n.children)return 0;return n.children.length+n.children.reduce((s,c)=>s+countChildren(c),0);}
+function deleteFile(tid,fname){const n=findNode(kbTree,tid);if(n){n.files=n.files.filter(f=>f.name!==fname);renderKbDetail(n);}}
+function addFile(){const input=document.createElement('input');input.type='file';input.multiple=true;input.onchange=()=>{if(!selectedKbNode){alert('Выберите тему в дереве');return;}const node=findNode(kbTree,selectedKbNode);if(!node||node.type!=='topic'){alert('Выберите тему (не папку) для загрузки файла');return;}Array.from(input.files).forEach(f=>{node.files.push({name:f.name,size:formatSize(f.size),date:new Date().toLocaleDateString('ru')});});renderKb();renderKbDetail(node);};input.click();}
+function formatSize(b){if(b<1024)return b+' Б';if(b<1048576)return Math.round(b/1024)+' КБ';return(b/1048576).toFixed(1)+' МБ';}
+function addFolder(){folderModalTarget=null;document.getElementById('folder-modal-title').textContent='Новая папка';document.getElementById('f-folder-name').value='';document.getElementById('folder-modal').style.display='flex';}
+function addFolderInside(pid){folderModalTarget=pid;document.getElementById('folder-modal-title').textContent='Новая подпапка';document.getElementById('f-folder-name').value='';document.getElementById('folder-modal').style.display='flex';}
+function closeFolderModal(){document.getElementById('folder-modal').style.display='none';}
+function confirmFolder(){const name=document.getElementById('f-folder-name').value.trim();if(!name)return;const id='f_'+Date.now();const node={id,type:'section',name,children:[]};if(folderModalTarget){const p=findNode(kbTree,folderModalTarget);if(p){if(!p.children)p.children=[];p.children.push(node);}}else{kbTree.push({id:'class_'+Date.now(),type:'class',name,children:[]});}closeFolderModal();renderKb();}
+function openNewLesson(){const today=new Date().toISOString().slice(0,10);if(!document.getElementById('f-date').value)document.getElementById('f-date').value=today;document.getElementById('modal').style.display='flex';}
+function closeModal(){document.getElementById('modal').style.display='none';}
+function setPlatform(p){selectedPlatform=p;document.getElementById('p-zoom').classList.toggle('active',p==='zoom');document.getElementById('p-ya').classList.toggle('active',p==='ya');document.getElementById('f-link').placeholder=p==='zoom'?'https://zoom.us/j/...':'https://telemost.yandex.ru/j/...';}
+function saveLesson(){const student=document.getElementById('f-student').value.trim();const date=document.getElementById('f-date').value;const time=document.getElementById('f-time').value;const topic=document.getElementById('f-topic').value.trim();const link=document.getElementById('f-link').value.trim();if(!student||!date||!time||!topic){alert('Заполните все обязательные поля');return;}lessons.push({id:Date.now(),student,date,time,topic,platform:selectedPlatform,link:link||'#',status:'upcoming'});['f-student','f-topic','f-link'].forEach(id=>document.getElementById(id).value='');closeModal();renderDashboard();if(document.getElementById('section-lessons').classList.contains('active'))renderLessons();if(document.getElementById('section-calendar').classList.contains('active'))renderCalendar();}
+renderDashboard();
+</script>
+</body>
+</html>

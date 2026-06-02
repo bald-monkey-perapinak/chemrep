@@ -38,7 +38,7 @@
     .btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: var(--radius-md); font-size: 13px; cursor: pointer; border: 0.5px solid var(--color-border-md); background: var(--color-surface); color: var(--color-text); font-family: inherit; transition: background 0.15s; }
     .btn:hover { background: var(--color-bg); }
     .btn-primary { background: var(--color-text); color: var(--color-surface); border-color: transparent; }
-    .btn-primary:hover { opacity: 0.88; }
+    .btn-primary:hover { opacity: 0.88; background: var(--color-text); }
     .btn-sm { padding: 5px 10px; font-size: 12px; }
     .btn-danger { color: #A32D2D; border-color: #F7C1C1; }
     .btn-danger:hover { background: #FCEBEB; }
@@ -104,9 +104,29 @@
     .form-input:focus { outline: none; border-color: var(--color-accent); }
     .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+    .form-err { font-size: 12px; color: #A32D2D; margin-top: 5px; min-height: 16px; }
     .platform-toggle { display: flex; gap: 8px; }
     .platform-btn { padding: 7px 16px; border-radius: var(--radius-md); font-size: 13px; cursor: pointer; border: 0.5px solid var(--color-border-md); background: var(--color-surface); color: var(--color-text-muted); font-family: inherit; transition: all 0.15s; }
     .platform-btn.active { border-color: #185FA5; background: #E6F1FB; color: #185FA5; font-weight: 500; }
+    /* Folder grid styles */
+    .kb-section-divider { display: flex; align-items: center; gap: 10px; margin: 14px 0 10px; }
+    .kb-section-label { font-size: 11px; color: var(--color-text-muted); white-space: nowrap; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; }
+    .kb-divider-line { flex: 1; height: 0.5px; background: var(--color-border); }
+    .folder-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 10px; }
+    .folder-card { background: var(--color-surface); border: 0.5px solid var(--color-border); border-radius: var(--radius-lg); padding: 14px 12px 12px; cursor: pointer; position: relative; transition: border-color .15s, background .15s; user-select: none; }
+    .folder-card:hover { border-color: var(--color-border-md); background: var(--color-bg); }
+    .folder-card-icon { font-size: 26px; display: block; margin-bottom: 6px; color: var(--color-text-muted); }
+    .folder-card-name { font-size: 12px; font-weight: 500; word-break: break-word; line-height: 1.4; padding-right: 20px; }
+    .folder-card-meta { font-size: 11px; color: var(--color-text-muted); margin-top: 3px; }
+    .folder-card-actions { position: absolute; top: 7px; right: 7px; display: flex; gap: 2px; opacity: 0; transition: opacity .15s; }
+    .folder-card:hover .folder-card-actions { opacity: 1; }
+    .icon-btn { width: 22px; height: 22px; border: none; background: none; cursor: pointer; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: var(--color-text-muted); transition: background .15s, color .15s; padding: 0; }
+    .icon-btn:hover { background: rgba(0,0,0,0.07); }
+    .icon-btn.del:hover { background: #FCEBEB; color: #A32D2D; }
+    .system-badge { font-size: 10px; color: var(--color-text-muted); background: var(--color-bg); border-radius: 4px; padding: 1px 5px; margin-top: 5px; display: inline-block; border: 0.5px solid var(--color-border); }
+    .custom-empty { text-align: center; padding: 20px; color: var(--color-text-muted); font-size: 13px; border: 0.5px dashed var(--color-border); border-radius: var(--radius-md); }
+    .toast-msg { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #1a1a18; color: #fff; font-size: 13px; padding: 8px 18px; border-radius: var(--radius-md); opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 300; white-space: nowrap; }
+    .toast-msg.show { opacity: 1; }
   </style>
 </head>
 <body>
@@ -129,6 +149,8 @@
       <button class="btn btn-primary" onclick="openNewLesson()"><i class="ti ti-plus"></i> Новое занятие</button>
     </div>
     <div class="content">
+
+      <!-- DASHBOARD -->
       <div class="section active" id="section-dashboard">
         <div class="stats-grid">
           <div class="stat-card"><div class="stat-label">Занятий сегодня</div><div class="stat-value">2</div></div>
@@ -141,6 +163,8 @@
           <div class="upcoming-list" id="upcoming-list"></div>
         </div>
       </div>
+
+      <!-- CALENDAR -->
       <div class="section" id="section-calendar">
         <div class="cal-header">
           <div class="cal-nav">
@@ -152,6 +176,8 @@
         </div>
         <div class="cal-grid" id="cal-grid"></div>
       </div>
+
+      <!-- LESSONS -->
       <div class="section" id="section-lessons">
         <div class="card" style="padding:0;overflow:hidden;">
           <table class="lessons-table">
@@ -160,20 +186,44 @@
           </table>
         </div>
       </div>
+
+      <!-- KNOWLEDGE BASE -->
       <div class="section" id="section-knowledge">
-        <div style="display:flex;justify-content:flex-end;gap:8px;margin-bottom:14px;">
-          <button class="btn btn-sm" onclick="addFolder()"><i class="ti ti-folder-plus"></i> Папка</button>
-          <button class="btn btn-sm btn-primary" onclick="addFile()"><i class="ti ti-upload"></i> Загрузить файл</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <span style="font-size:15px;font-weight:500;"><i class="ti ti-books" style="font-size:18px;vertical-align:-3px;margin-right:8px;"></i>Материалы</span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-sm btn-primary" onclick="openCreateFolder()"><i class="ti ti-folder-plus"></i> Новая папка</button>
+            <button class="btn btn-sm" onclick="addFile()"><i class="ti ti-upload"></i> Загрузить файл</button>
+          </div>
         </div>
-        <div class="kb-layout">
-          <div class="kb-tree" id="kb-tree"></div>
-          <div class="kb-detail" id="kb-detail"></div>
+
+        <div class="kb-section-divider">
+          <div class="kb-divider-line"></div>
+          <span class="kb-section-label">Системные папки</span>
+          <div class="kb-divider-line"></div>
+        </div>
+        <div class="folder-grid" id="system-folders-grid"></div>
+
+        <div class="kb-section-divider" style="margin-top:20px;">
+          <div class="kb-divider-line"></div>
+          <span class="kb-section-label">Мои папки</span>
+          <div class="kb-divider-line"></div>
+        </div>
+        <div id="custom-folders-area"></div>
+
+        <div style="margin-top:24px;">
+          <div class="kb-layout">
+            <div class="kb-tree" id="kb-tree"></div>
+            <div class="kb-detail" id="kb-detail"></div>
+          </div>
         </div>
       </div>
+
     </div>
   </main>
 </div>
 
+<!-- Modal: New lesson -->
 <div class="modal-overlay" id="modal" style="display:none;">
   <div class="modal">
     <div class="modal-header"><span class="modal-title">Новое занятие</span><button class="btn btn-sm" onclick="closeModal()"><i class="ti ti-x"></i></button></div>
@@ -189,57 +239,394 @@
   </div>
 </div>
 
-<div class="modal-overlay" id="folder-modal" style="display:none;">
+<!-- Modal: Create custom folder -->
+<div class="modal-overlay" id="create-folder-modal" style="display:none;" onclick="if(event.target===this)closeCreateFolder()">
   <div class="modal" style="width:360px;">
-    <div class="modal-header"><span class="modal-title" id="folder-modal-title">Новая папка</span><button class="btn btn-sm" onclick="closeFolderModal()"><i class="ti ti-x"></i></button></div>
-    <div class="form-group"><label class="form-label">Название</label><input class="form-input" id="f-folder-name" placeholder="Название папки" /></div>
-    <div class="form-actions"><button class="btn" onclick="closeFolderModal()">Отмена</button><button class="btn btn-primary" onclick="confirmFolder()">Создать</button></div>
+    <div class="modal-header">
+      <span class="modal-title"><i class="ti ti-folder-plus" style="font-size:16px;vertical-align:-2px;margin-right:6px;"></i>Новая папка</span>
+      <button class="btn btn-sm" onclick="closeCreateFolder()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Название</label>
+      <input class="form-input" id="cf-name" placeholder="Например: Подготовка к ОГЭ" maxlength="60"
+        oninput="validateCFName()" onkeydown="if(event.key==='Enter')confirmCreateFolder()" />
+      <div class="form-err" id="cf-err"></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn" onclick="closeCreateFolder()">Отмена</button>
+      <button class="btn btn-primary" id="cf-submit" onclick="confirmCreateFolder()">Создать</button>
+    </div>
   </div>
 </div>
+
+<!-- Modal: Rename custom folder -->
+<div class="modal-overlay" id="rename-folder-modal" style="display:none;" onclick="if(event.target===this)closeRenameFolder()">
+  <div class="modal" style="width:360px;">
+    <div class="modal-header">
+      <span class="modal-title"><i class="ti ti-pencil" style="font-size:16px;vertical-align:-2px;margin-right:6px;"></i>Переименовать папку</span>
+      <button class="btn btn-sm" onclick="closeRenameFolder()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Новое название</label>
+      <input class="form-input" id="rf-name" placeholder="Название папки" maxlength="60"
+        oninput="validateRFName()" onkeydown="if(event.key==='Enter')confirmRenameFolder()" />
+      <div class="form-err" id="rf-err"></div>
+    </div>
+    <div class="form-actions">
+      <button class="btn" onclick="closeRenameFolder()">Отмена</button>
+      <button class="btn btn-primary" id="rf-submit" onclick="confirmRenameFolder()">Сохранить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Delete custom folder -->
+<div class="modal-overlay" id="delete-folder-modal" style="display:none;" onclick="if(event.target===this)closeDeleteFolder()">
+  <div class="modal" style="width:360px;">
+    <div class="modal-header">
+      <span class="modal-title" style="color:#A32D2D;"><i class="ti ti-trash" style="font-size:16px;vertical-align:-2px;margin-right:6px;"></i>Удалить папку</span>
+      <button class="btn btn-sm" onclick="closeDeleteFolder()"><i class="ti ti-x"></i></button>
+    </div>
+    <p id="df-msg" style="font-size:14px;color:var(--color-text-muted);line-height:1.6;margin-bottom:4px;"></p>
+    <div class="form-actions">
+      <button class="btn" onclick="closeDeleteFolder()">Отмена</button>
+      <button class="btn btn-danger" onclick="confirmDeleteFolder()"><i class="ti ti-trash"></i> Удалить</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-msg" id="toast-msg"></div>
 
 <script>
 const MONTHS=['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 const DAYS=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
-let currentMonth=new Date().getMonth(),currentYear=new Date().getFullYear(),selectedPlatform='zoom',selectedKbNode=null,folderModalTarget=null;
+let currentMonth=new Date().getMonth(),currentYear=new Date().getFullYear(),selectedPlatform='zoom',selectedKbNode=null;
+let folderModalTarget=null;
+
 let lessons=[
   {id:1,student:'Петров Михаил',date:'2026-06-02',time:'16:00',topic:'Алканы — строение',platform:'zoom',link:'https://zoom.us/j/123456',status:'upcoming'},
   {id:2,student:'Сидорова Анна',date:'2026-06-02',time:'18:30',topic:'Степени окисления',platform:'ya',link:'https://telemost.yandex.ru/j/abc',status:'upcoming'},
   {id:3,student:'Козлов Дмитрий',date:'2026-06-03',time:'15:00',topic:'Реакции замещения',platform:'zoom',link:'https://zoom.us/j/789',status:'upcoming'},
   {id:4,student:'Новикова Елена',date:'2026-05-28',time:'17:00',topic:'Периодический закон',platform:'zoom',link:'https://zoom.us/j/555',status:'done'},
 ];
+
 let kbTree=[
   {id:'c8',type:'class',name:'8 класс',children:[{id:'c8-org',type:'section',name:'Основные понятия',children:[{id:'c8-org-1',type:'topic',name:'Атом и молекула',files:[{name:'Конспект_атом.pdf',size:'1.2 МБ',date:'15.05.2026'},{name:'Схема_строения.png',size:'340 КБ',date:'15.05.2026'}]}]}]},
   {id:'c9',type:'class',name:'9 класс',children:[{id:'c9-reac',type:'section',name:'Типы реакций',children:[{id:'c9-reac-1',type:'topic',name:'Реакции замещения',files:[{name:'Конспект_замещение.pdf',size:'890 КБ',date:'10.05.2026'}]},{id:'c9-reac-2',type:'topic',name:'Реакции обмена',files:[]}]}]},
   {id:'c10',type:'class',name:'10 класс',children:[{id:'c10-org',type:'section',name:'Органическая химия',children:[{id:'c10-org-alk',type:'topic',name:'Алканы',files:[{name:'Алканы_конспект.pdf',size:'1.5 МБ',date:'01.06.2026'},{name:'Таблица_свойств.xlsx',size:'220 КБ',date:'01.06.2026'},{name:'Домашнее_задание.pdf',size:'500 КБ',date:'01.06.2026'}]},{id:'c10-org-alk2',type:'topic',name:'Алкены',files:[]}]}]},
 ];
-function showSection(id,el){document.querySelectorAll('.section').forEach(s=>s.classList.remove('active'));document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));document.getElementById('section-'+id).classList.add('active');el.classList.add('active');const t={dashboard:'Обзор',calendar:'Календарь',lessons:'Занятия',knowledge:'База знаний'};document.getElementById('topbar-title').textContent=t[id];if(id==='calendar')renderCalendar();if(id==='lessons')renderLessons();if(id==='knowledge')renderKb();if(id==='dashboard')renderDashboard();}
-function renderDashboard(){const today=new Date().toISOString().slice(0,10);const upcoming=lessons.filter(l=>l.date>=today&&l.status!=='done').sort((a,b)=>a.date+a.time>b.date+b.time?1:-1).slice(0,5);const ul=document.getElementById('upcoming-list');ul.innerHTML=upcoming.length?upcoming.map(l=>`<div class="lesson-row"><span class="lesson-time">${fmtDate(l.date)}<br>${l.time}</span><div class="lesson-info"><div class="lesson-name">${l.student}</div><div class="lesson-topic">${l.topic}</div></div><span class="badge ${l.platform==='zoom'?'badge-zoom':'badge-ya'}">${l.platform==='zoom'?'Zoom':'Телемост'}</span><a href="${l.link}" class="btn btn-sm" target="_blank"><i class="ti ti-external-link"></i> Открыть</a></div>`).join(''):'<div class="empty-state"><i class="ti ti-calendar-off"></i>Нет предстоящих занятий</div>';}
-function fmtDate(d){const[y,m,day]=d.split('-');const mo=['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];return`${parseInt(day)} ${mo[parseInt(m)-1]}`;}
-function renderCalendar(){document.getElementById('cal-month-label').textContent=MONTHS[currentMonth]+' '+currentYear;const grid=document.getElementById('cal-grid');grid.innerHTML=DAYS.map(d=>`<div class="cal-day-header">${d}</div>`).join('');const first=new Date(currentYear,currentMonth,1);let startDow=first.getDay();if(startDow===0)startDow=7;const dim=new Date(currentYear,currentMonth+1,0).getDate();const dip=new Date(currentYear,currentMonth,0).getDate();const todayStr=new Date().toISOString().slice(0,10);let cells=[];for(let i=startDow-1;i>0;i--)cells.push({d:dip-i+1,month:currentMonth-1,other:true});for(let i=1;i<=dim;i++)cells.push({d:i,month:currentMonth,other:false});let rem=42-cells.length;for(let i=1;i<=rem;i++)cells.push({d:i,month:currentMonth+1,other:true});grid.innerHTML+=cells.map(c=>{const ds=`${currentYear}-${String(c.month+1).padStart(2,'0')}-${String(c.d).padStart(2,'0')}`;const isT=ds===todayStr&&!c.other;const dl=lessons.filter(l=>l.date===ds);return`<div class="cal-day${c.other?' other-month':''}${isT?' today':''}" onclick="calDayClick('${ds}')"><div class="day-num">${c.d}</div>${dl.map(l=>`<div class="day-event ${l.platform}">${l.time} ${l.student.split(' ')[0]}</div>`).join('')}</div>`;}).join('');}
-function calDayClick(ds){document.getElementById('f-date').value=ds;openNewLesson();}
-function changeMonth(d){currentMonth+=d;if(currentMonth>11){currentMonth=0;currentYear++;}if(currentMonth<0){currentMonth=11;currentYear--;}renderCalendar();}
-function goToday(){currentMonth=new Date().getMonth();currentYear=new Date().getFullYear();renderCalendar();}
-function renderLessons(){const s=[...lessons].sort((a,b)=>a.date+a.time<b.date+b.time?1:-1);document.getElementById('lessons-tbody').innerHTML=s.map(l=>`<tr><td>${fmtDate(l.date)}, ${l.time}</td><td style="font-weight:500">${l.student}</td><td>${l.topic}</td><td><span class="badge ${l.platform==='zoom'?'badge-zoom':'badge-ya'}">${l.platform==='zoom'?'Zoom':'Яндекс Телемост'}</span></td><td><a href="${l.link}" class="link-btn" target="_blank"><i class="ti ti-external-link"></i> Открыть</a></td><td><span class="badge ${l.status==='done'?'badge-active':'badge-upcoming'}">${l.status==='done'?'Завершено':'Предстоит'}</span></td><td><button class="btn btn-sm btn-danger" onclick="deleteLesson(${l.id})"><i class="ti ti-trash"></i></button></td></tr>`).join('');}
-function deleteLesson(id){lessons=lessons.filter(l=>l.id!==id);renderLessons();renderDashboard();}
-function renderKb(){document.getElementById('kb-tree').innerHTML=renderTreeNodes(kbTree,0);renderKbDetail(null);}
-function renderTreeNodes(nodes,depth){return nodes.map(n=>{const indent=depth>0?`style="padding-left:${depth*16+8}px"`:'';const icon=n.type==='class'?'ti-school':n.type==='section'?'ti-folder':n.type==='topic'?'ti-file-text':'ti-file';let h=`<div class="tree-item${selectedKbNode===n.id?' selected':''}" ${indent} onclick="selectKb('${n.id}')"><i class="ti ${icon}"></i>${n.name}</div>`;if(n.children)h+=renderTreeNodes(n.children,depth+1);return h;}).join('');}
-function selectKb(id){selectedKbNode=id;const node=findNode(kbTree,id);renderKb();renderKbDetail(node);}
-function findNode(nodes,id){for(const n of nodes){if(n.id===id)return n;if(n.children){const f=findNode(n.children,id);if(f)return f;}}return null;}
-function renderKbDetail(node){const el=document.getElementById('kb-detail');if(!node){el.innerHTML=`<div class="card"><div class="empty-state"><i class="ti ti-folder"></i>Выберите папку или тему слева</div></div>`;return;}if(node.type==='topic'){const files=node.files||[];el.innerHTML=`<div class="card"><div style="font-size:15px;font-weight:500;margin-bottom:4px;">${node.name}</div><div style="font-size:12px;color:var(--color-text-muted);margin-bottom:16px;">Тема · ${files.length} файлов</div><div class="kb-files">${files.length?files.map(f=>`<div class="file-row"><i class="ti ${fileIcon(f.name)} file-icon"></i><div class="file-info"><div class="file-name">${f.name}</div><div class="file-meta">${f.size} · ${f.date}</div></div><button class="btn btn-sm"><i class="ti ti-download"></i></button><button class="btn btn-sm btn-danger" onclick="deleteFile('${node.id}','${f.name}')"><i class="ti ti-trash"></i></button></div>`).join(''):`<div class="empty-state"><i class="ti ti-file-off"></i>Нет файлов</div>`}</div><div style="margin-top:12px;"><button class="btn btn-sm btn-primary" onclick="addFile()"><i class="ti ti-upload"></i> Загрузить файл</button></div></div>`;}else{const count=countChildren(node);el.innerHTML=`<div class="card"><div style="font-size:15px;font-weight:500;margin-bottom:4px;">${node.name}</div><div style="font-size:12px;color:var(--color-text-muted);margin-bottom:16px;">${typeLabel(node.type)} · ${count} элементов</div><button class="btn btn-sm btn-primary" onclick="addFolderInside('${node.id}')"><i class="ti ti-folder-plus"></i> Добавить подпапку</button></div>`;}}
-function fileIcon(n){if(n.endsWith('.pdf'))return'ti-file-type-pdf';if(n.endsWith('.xlsx')||n.endsWith('.csv'))return'ti-file-spreadsheet';if(n.endsWith('.png')||n.endsWith('.jpg'))return'ti-photo';return'ti-file';}
-function typeLabel(t){return t==='class'?'Класс':t==='section'?'Раздел':'Тема';}
-function countChildren(n){if(!n.children)return 0;return n.children.length+n.children.reduce((s,c)=>s+countChildren(c),0);}
-function deleteFile(tid,fname){const n=findNode(kbTree,tid);if(n){n.files=n.files.filter(f=>f.name!==fname);renderKbDetail(n);}}
-function addFile(){const input=document.createElement('input');input.type='file';input.multiple=true;input.onchange=()=>{if(!selectedKbNode){alert('Выберите тему в дереве');return;}const node=findNode(kbTree,selectedKbNode);if(!node||node.type!=='topic'){alert('Выберите тему (не папку) для загрузки файла');return;}Array.from(input.files).forEach(f=>{node.files.push({name:f.name,size:formatSize(f.size),date:new Date().toLocaleDateString('ru')});});renderKb();renderKbDetail(node);};input.click();}
-function formatSize(b){if(b<1024)return b+' Б';if(b<1048576)return Math.round(b/1024)+' КБ';return(b/1048576).toFixed(1)+' МБ';}
-function addFolder(){folderModalTarget=null;document.getElementById('folder-modal-title').textContent='Новая папка';document.getElementById('f-folder-name').value='';document.getElementById('folder-modal').style.display='flex';}
-function addFolderInside(pid){folderModalTarget=pid;document.getElementById('folder-modal-title').textContent='Новая подпапка';document.getElementById('f-folder-name').value='';document.getElementById('folder-modal').style.display='flex';}
-function closeFolderModal(){document.getElementById('folder-modal').style.display='none';}
-function confirmFolder(){const name=document.getElementById('f-folder-name').value.trim();if(!name)return;const id='f_'+Date.now();const node={id,type:'section',name,children:[]};if(folderModalTarget){const p=findNode(kbTree,folderModalTarget);if(p){if(!p.children)p.children=[];p.children.push(node);}}else{kbTree.push({id:'class_'+Date.now(),type:'class',name,children:[]});}closeFolderModal();renderKb();}
-function openNewLesson(){const today=new Date().toISOString().slice(0,10);if(!document.getElementById('f-date').value)document.getElementById('f-date').value=today;document.getElementById('modal').style.display='flex';}
-function closeModal(){document.getElementById('modal').style.display='none';}
-function setPlatform(p){selectedPlatform=p;document.getElementById('p-zoom').classList.toggle('active',p==='zoom');document.getElementById('p-ya').classList.toggle('active',p==='ya');document.getElementById('f-link').placeholder=p==='zoom'?'https://zoom.us/j/...':'https://telemost.yandex.ru/j/...';}
-function saveLesson(){const student=document.getElementById('f-student').value.trim();const date=document.getElementById('f-date').value;const time=document.getElementById('f-time').value;const topic=document.getElementById('f-topic').value.trim();const link=document.getElementById('f-link').value.trim();if(!student||!date||!time||!topic){alert('Заполните все обязательные поля');return;}lessons.push({id:Date.now(),student,date,time,topic,platform:selectedPlatform,link:link||'#',status:'upcoming'});['f-student','f-topic','f-link'].forEach(id=>document.getElementById(id).value='');closeModal();renderDashboard();if(document.getElementById('section-lessons').classList.contains('active'))renderLessons();if(document.getElementById('section-calendar').classList.contains('active'))renderCalendar();}
+
+/* ─── System folders (from kbTree root) ─── */
+const SYSTEM_FOLDERS = [
+  {id:'c8',  name:'8 класс',  icon:'ti-school', count:12},
+  {id:'c9',  name:'9 класс',  icon:'ti-school', count:18},
+  {id:'c10', name:'10 класс', icon:'ti-school', count:24},
+  {id:'c11', name:'11 класс', icon:'ti-school', count:15},
+];
+
+/* ─── Custom folders state ─── */
+let customFolders = [
+  {id:'cf1', name:'Подготовка к ОГЭ',     icon:'ti-folder', count:7},
+  {id:'cf2', name:'Олимпиадные задачи',   icon:'ti-folder', count:3},
+];
+let pendingDeleteId = null;
+let pendingRenameId = null;
+
+/* ─── Render folder grids ─── */
+function renderFolderGrids() {
+  const sg = document.getElementById('system-folders-grid');
+  if (sg) sg.innerHTML = SYSTEM_FOLDERS.map(f => systemFolderCard(f)).join('');
+  renderCustomFolders();
+}
+
+function systemFolderCard(f) {
+  return `<div class="folder-card" style="cursor:default;">
+    <i class="ti ${f.icon} folder-card-icon"></i>
+    <div class="folder-card-name">${esc(f.name)}</div>
+    <div class="folder-card-meta">${f.count} материал${plural(f.count)}</div>
+    <span class="system-badge">Системная</span>
+  </div>`;
+}
+
+function renderCustomFolders() {
+  const area = document.getElementById('custom-folders-area');
+  if (!area) return;
+  if (customFolders.length === 0) {
+    area.innerHTML = `<div class="custom-empty"><i class="ti ti-folder-off" style="font-size:28px;display:block;margin-bottom:8px;opacity:.35;"></i>Нет пользовательских папок.<br>Нажмите «Новая папка», чтобы создать.</div>`;
+    return;
+  }
+  area.innerHTML = `<div class="folder-grid">${customFolders.map(f => customFolderCard(f)).join('')}</div>`;
+}
+
+function customFolderCard(f) {
+  return `<div class="folder-card">
+    <div class="folder-card-actions">
+      <button class="icon-btn" onclick="event.stopPropagation();openRenameFolder('${f.id}')" title="Переименовать" aria-label="Переименовать">
+        <i class="ti ti-pencil" style="font-size:13px;"></i>
+      </button>
+      <button class="icon-btn del" onclick="event.stopPropagation();openDeleteFolder('${f.id}')" title="Удалить" aria-label="Удалить">
+        <i class="ti ti-trash" style="font-size:13px;"></i>
+      </button>
+    </div>
+    <i class="ti ${f.icon} folder-card-icon"></i>
+    <div class="folder-card-name">${esc(f.name)}</div>
+    <div class="folder-card-meta">${f.count} материал${plural(f.count)}</div>
+  </div>`;
+}
+
+function plural(n) {
+  if (n%10===1 && n%100!==11) return '';
+  if (n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20)) return 'а';
+  return 'ов';
+}
+function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+/* ─── Create folder ─── */
+function openCreateFolder() {
+  document.getElementById('create-folder-modal').style.display = 'flex';
+  const inp = document.getElementById('cf-name');
+  inp.value = '';
+  document.getElementById('cf-err').textContent = '';
+  document.getElementById('cf-submit').disabled = false;
+  setTimeout(() => inp.focus(), 50);
+}
+function closeCreateFolder() {
+  document.getElementById('create-folder-modal').style.display = 'none';
+}
+function validateCFName() {
+  const v = document.getElementById('cf-name').value.trim();
+  const err = document.getElementById('cf-err');
+  const btn = document.getElementById('cf-submit');
+  if (!v) { err.textContent = ''; btn.disabled = true; return false; }
+  const taken = [...SYSTEM_FOLDERS, ...customFolders].some(f => f.name.toLowerCase() === v.toLowerCase());
+  if (taken) { err.textContent = 'Папка с таким названием уже существует'; btn.disabled = true; return false; }
+  err.textContent = ''; btn.disabled = false; return true;
+}
+function confirmCreateFolder() {
+  if (!validateCFName()) return;
+  const name = document.getElementById('cf-name').value.trim();
+  customFolders.push({ id: 'cf' + Date.now(), name, icon: 'ti-folder', count: 0 });
+  closeCreateFolder();
+  renderCustomFolders();
+  showToast('Папка «' + name + '» создана');
+}
+
+/* ─── Rename folder ─── */
+function openRenameFolder(id) {
+  pendingRenameId = id;
+  const f = customFolders.find(x => x.id === id);
+  if (!f) return;
+  const inp = document.getElementById('rf-name');
+  inp.value = f.name;
+  document.getElementById('rf-err').textContent = '';
+  document.getElementById('rf-submit').disabled = false;
+  document.getElementById('rename-folder-modal').style.display = 'flex';
+  setTimeout(() => { inp.focus(); inp.select(); }, 50);
+}
+function closeRenameFolder() {
+  document.getElementById('rename-folder-modal').style.display = 'none';
+  pendingRenameId = null;
+}
+function validateRFName() {
+  const v = document.getElementById('rf-name').value.trim();
+  const err = document.getElementById('rf-err');
+  const btn = document.getElementById('rf-submit');
+  if (!v) { err.textContent = 'Название не может быть пустым'; btn.disabled = true; return false; }
+  const taken = [...SYSTEM_FOLDERS, ...customFolders].some(x => x.id !== pendingRenameId && x.name.toLowerCase() === v.toLowerCase());
+  if (taken) { err.textContent = 'Папка с таким названием уже существует'; btn.disabled = true; return false; }
+  err.textContent = ''; btn.disabled = false; return true;
+}
+function confirmRenameFolder() {
+  if (!validateRFName()) return;
+  const v = document.getElementById('rf-name').value.trim();
+  const f = customFolders.find(x => x.id === pendingRenameId);
+  const old = f.name;
+  f.name = v;
+  closeRenameFolder();
+  renderCustomFolders();
+  showToast('«' + old + '» переименована в «' + v + '»');
+}
+
+/* ─── Delete folder ─── */
+function openDeleteFolder(id) {
+  pendingDeleteId = id;
+  const f = customFolders.find(x => x.id === id);
+  if (!f) return;
+  document.getElementById('df-msg').innerHTML = 'Удалить папку <strong>«' + esc(f.name) + '»</strong>? Материалы внутри останутся в системе.';
+  document.getElementById('delete-folder-modal').style.display = 'flex';
+}
+function closeDeleteFolder() {
+  document.getElementById('delete-folder-modal').style.display = 'none';
+  pendingDeleteId = null;
+}
+function confirmDeleteFolder() {
+  const f = customFolders.find(x => x.id === pendingDeleteId);
+  if (!f) return;
+  const name = f.name;
+  customFolders = customFolders.filter(x => x.id !== pendingDeleteId);
+  closeDeleteFolder();
+  renderCustomFolders();
+  showToast('Папка «' + name + '» удалена');
+}
+
+/* ─── Toast ─── */
+function showToast(msg) {
+  const t = document.getElementById('toast-msg');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+/* ─── Section navigation ─── */
+function showSection(id, el) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('section-' + id).classList.add('active');
+  el.classList.add('active');
+  const t = {dashboard:'Обзор', calendar:'Календарь', lessons:'Занятия', knowledge:'База знаний'};
+  document.getElementById('topbar-title').textContent = t[id];
+  if (id === 'calendar') renderCalendar();
+  if (id === 'lessons') renderLessons();
+  if (id === 'knowledge') { renderFolderGrids(); renderKb(); }
+  if (id === 'dashboard') renderDashboard();
+}
+
+/* ─── Dashboard ─── */
+function renderDashboard() {
+  const today = new Date().toISOString().slice(0,10);
+  const upcoming = lessons.filter(l => l.date >= today && l.status !== 'done').sort((a,b) => a.date+a.time > b.date+b.time ? 1 : -1).slice(0,5);
+  const ul = document.getElementById('upcoming-list');
+  ul.innerHTML = upcoming.length
+    ? upcoming.map(l => `<div class="lesson-row"><span class="lesson-time">${fmtDate(l.date)}<br>${l.time}</span><div class="lesson-info"><div class="lesson-name">${l.student}</div><div class="lesson-topic">${l.topic}</div></div><span class="badge ${l.platform==='zoom'?'badge-zoom':'badge-ya'}">${l.platform==='zoom'?'Zoom':'Телемост'}</span><a href="${l.link}" class="btn btn-sm" target="_blank"><i class="ti ti-external-link"></i> Открыть</a></div>`).join('')
+    : '<div class="empty-state"><i class="ti ti-calendar-off"></i>Нет предстоящих занятий</div>';
+}
+function fmtDate(d) {
+  const [y,m,day] = d.split('-');
+  const mo = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек'];
+  return `${parseInt(day)} ${mo[parseInt(m)-1]}`;
+}
+
+/* ─── Calendar ─── */
+function renderCalendar() {
+  document.getElementById('cal-month-label').textContent = MONTHS[currentMonth] + ' ' + currentYear;
+  const grid = document.getElementById('cal-grid');
+  grid.innerHTML = DAYS.map(d => `<div class="cal-day-header">${d}</div>`).join('');
+  const first = new Date(currentYear, currentMonth, 1);
+  let startDow = first.getDay();
+  if (startDow === 0) startDow = 7;
+  const dim = new Date(currentYear, currentMonth+1, 0).getDate();
+  const dip = new Date(currentYear, currentMonth, 0).getDate();
+  const todayStr = new Date().toISOString().slice(0,10);
+  let cells = [];
+  for (let i = startDow-1; i > 0; i--) cells.push({d:dip-i+1, month:currentMonth-1, other:true});
+  for (let i = 1; i <= dim; i++) cells.push({d:i, month:currentMonth, other:false});
+  let rem = 42 - cells.length;
+  for (let i = 1; i <= rem; i++) cells.push({d:i, month:currentMonth+1, other:true});
+  grid.innerHTML += cells.map(c => {
+    const ds = `${currentYear}-${String(c.month+1).padStart(2,'0')}-${String(c.d).padStart(2,'0')}`;
+    const isT = ds === todayStr && !c.other;
+    const dl = lessons.filter(l => l.date === ds);
+    return `<div class="cal-day${c.other?' other-month':''}${isT?' today':''}" onclick="calDayClick('${ds}')"><div class="day-num">${c.d}</div>${dl.map(l => `<div class="day-event ${l.platform}">${l.time} ${l.student.split(' ')[0]}</div>`).join('')}</div>`;
+  }).join('');
+}
+function calDayClick(ds) { document.getElementById('f-date').value = ds; openNewLesson(); }
+function changeMonth(d) { currentMonth += d; if (currentMonth > 11) { currentMonth=0; currentYear++; } if (currentMonth < 0) { currentMonth=11; currentYear--; } renderCalendar(); }
+function goToday() { currentMonth = new Date().getMonth(); currentYear = new Date().getFullYear(); renderCalendar(); }
+
+/* ─── Lessons ─── */
+function renderLessons() {
+  const s = [...lessons].sort((a,b) => a.date+a.time < b.date+b.time ? 1 : -1);
+  document.getElementById('lessons-tbody').innerHTML = s.map(l =>
+    `<tr><td>${fmtDate(l.date)}, ${l.time}</td><td style="font-weight:500">${l.student}</td><td>${l.topic}</td><td><span class="badge ${l.platform==='zoom'?'badge-zoom':'badge-ya'}">${l.platform==='zoom'?'Zoom':'Яндекс Телемост'}</span></td><td><a href="${l.link}" class="link-btn" target="_blank"><i class="ti ti-external-link"></i> Открыть</a></td><td><span class="badge ${l.status==='done'?'badge-active':'badge-upcoming'}">${l.status==='done'?'Завершено':'Предстоит'}</span></td><td><button class="btn btn-sm btn-danger" onclick="deleteLesson(${l.id})"><i class="ti ti-trash"></i></button></td></tr>`
+  ).join('');
+}
+function deleteLesson(id) { lessons = lessons.filter(l => l.id !== id); renderLessons(); renderDashboard(); }
+
+/* ─── Knowledge Base tree ─── */
+function renderKb() {
+  document.getElementById('kb-tree').innerHTML = renderTreeNodes(kbTree, 0);
+  renderKbDetail(null);
+}
+function renderTreeNodes(nodes, depth) {
+  return nodes.map(n => {
+    const indent = depth > 0 ? `style="padding-left:${depth*16+8}px"` : '';
+    const icon = n.type==='class' ? 'ti-school' : n.type==='section' ? 'ti-folder' : n.type==='topic' ? 'ti-file-text' : 'ti-file';
+    let h = `<div class="tree-item${selectedKbNode===n.id?' selected':''}" ${indent} onclick="selectKb('${n.id}')"><i class="ti ${icon}"></i>${n.name}</div>`;
+    if (n.children) h += renderTreeNodes(n.children, depth+1);
+    return h;
+  }).join('');
+}
+function selectKb(id) { selectedKbNode = id; const node = findNode(kbTree, id); renderKb(); renderKbDetail(node); }
+function findNode(nodes, id) { for (const n of nodes) { if (n.id === id) return n; if (n.children) { const f = findNode(n.children, id); if (f) return f; } } return null; }
+function renderKbDetail(node) {
+  const el = document.getElementById('kb-detail');
+  if (!node) { el.innerHTML = `<div class="card"><div class="empty-state"><i class="ti ti-folder"></i>Выберите папку или тему слева</div></div>`; return; }
+  if (node.type === 'topic') {
+    const files = node.files || [];
+    el.innerHTML = `<div class="card"><div style="font-size:15px;font-weight:500;margin-bottom:4px;">${node.name}</div><div style="font-size:12px;color:var(--color-text-muted);margin-bottom:16px;">Тема · ${files.length} файлов</div><div class="kb-files">${files.length?files.map(f=>`<div class="file-row"><i class="ti ${fileIcon(f.name)} file-icon"></i><div class="file-info"><div class="file-name">${f.name}</div><div class="file-meta">${f.size} · ${f.date}</div></div><button class="btn btn-sm"><i class="ti ti-download"></i></button><button class="btn btn-sm btn-danger" onclick="deleteFile('${node.id}','${f.name}')"><i class="ti ti-trash"></i></button></div>`).join(''):`<div class="empty-state"><i class="ti ti-file-off"></i>Нет файлов</div>`}</div><div style="margin-top:12px;"><button class="btn btn-sm btn-primary" onclick="addFile()"><i class="ti ti-upload"></i> Загрузить файл</button></div></div>`;
+  } else {
+    const count = countChildren(node);
+    el.innerHTML = `<div class="card"><div style="font-size:15px;font-weight:500;margin-bottom:4px;">${node.name}</div><div style="font-size:12px;color:var(--color-text-muted);margin-bottom:16px;">${typeLabel(node.type)} · ${count} элементов</div><button class="btn btn-sm btn-primary" onclick="addFolderInside('${node.id}')"><i class="ti ti-folder-plus"></i> Добавить подпапку</button></div>`;
+  }
+}
+function fileIcon(n) { if(n.endsWith('.pdf'))return'ti-file-type-pdf'; if(n.endsWith('.xlsx')||n.endsWith('.csv'))return'ti-file-spreadsheet'; if(n.endsWith('.png')||n.endsWith('.jpg'))return'ti-photo'; return'ti-file'; }
+function typeLabel(t) { return t==='class'?'Класс':t==='section'?'Раздел':'Тема'; }
+function countChildren(n) { if(!n.children)return 0; return n.children.length+n.children.reduce((s,c)=>s+countChildren(c),0); }
+function deleteFile(tid, fname) { const n = findNode(kbTree, tid); if(n){n.files=n.files.filter(f=>f.name!==fname); renderKbDetail(n);} }
+function addFile() {
+  const input = document.createElement('input'); input.type='file'; input.multiple=true;
+  input.onchange = () => {
+    if (!selectedKbNode) { alert('Выберите тему в дереве'); return; }
+    const node = findNode(kbTree, selectedKbNode);
+    if (!node || node.type !== 'topic') { alert('Выберите тему (не папку) для загрузки файла'); return; }
+    Array.from(input.files).forEach(f => { node.files.push({name:f.name, size:formatSize(f.size), date:new Date().toLocaleDateString('ru')}); });
+    renderKb(); renderKbDetail(node);
+  };
+  input.click();
+}
+function formatSize(b) { if(b<1024)return b+' Б'; if(b<1048576)return Math.round(b/1024)+' КБ'; return(b/1048576).toFixed(1)+' МБ'; }
+
+/* addFolderInside — used from kb-detail panel */
+function addFolderInside(pid) {
+  folderModalTarget = pid;
+  const name = prompt('Название подпапки:');
+  if (!name || !name.trim()) return;
+  const id = 'f_' + Date.now();
+  const node = { id, type:'section', name:name.trim(), children:[] };
+  const p = findNode(kbTree, pid);
+  if (p) { if (!p.children) p.children = []; p.children.push(node); }
+  renderKb();
+  showToast('Подпапка «' + name.trim() + '» создана');
+}
+
+/* ─── New lesson modal ─── */
+function openNewLesson() {
+  const today = new Date().toISOString().slice(0,10);
+  if (!document.getElementById('f-date').value) document.getElementById('f-date').value = today;
+  document.getElementById('modal').style.display = 'flex';
+}
+function closeModal() { document.getElementById('modal').style.display = 'none'; }
+function setPlatform(p) {
+  selectedPlatform = p;
+  document.getElementById('p-zoom').classList.toggle('active', p==='zoom');
+  document.getElementById('p-ya').classList.toggle('active', p==='ya');
+  document.getElementById('f-link').placeholder = p==='zoom' ? 'https://zoom.us/j/...' : 'https://telemost.yandex.ru/j/...';
+}
+function saveLesson() {
+  const student = document.getElementById('f-student').value.trim();
+  const date = document.getElementById('f-date').value;
+  const time = document.getElementById('f-time').value;
+  const topic = document.getElementById('f-topic').value.trim();
+  const link = document.getElementById('f-link').value.trim();
+  if (!student||!date||!time||!topic) { alert('Заполните все обязательные поля'); return; }
+  lessons.push({id:Date.now(), student, date, time, topic, platform:selectedPlatform, link:link||'#', status:'upcoming'});
+  ['f-student','f-topic','f-link'].forEach(id => document.getElementById(id).value = '');
+  closeModal();
+  renderDashboard();
+  if (document.getElementById('section-lessons').classList.contains('active')) renderLessons();
+  if (document.getElementById('section-calendar').classList.contains('active')) renderCalendar();
+}
+
+/* ─── Init ─── */
 renderDashboard();
 </script>
 </body>

@@ -39,10 +39,6 @@ export function countChildren(n) {
   return n.children.length + n.children.reduce((s, c) => s + countChildren(c), 0)
 }
 
-export function typeLabel(t) {
-  return t === 'class' ? 'Класс' : t === 'section' ? 'Раздел' : 'Тема'
-}
-
 export const MONTHS = [
   'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
   'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',

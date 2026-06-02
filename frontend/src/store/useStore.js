@@ -9,8 +9,8 @@ const initialLessons = [
 
 const initialKbTree = [
   {
-    id: 'c8', type: 'class', name: '8 класс', children: [
-      { id: 'c8-org', type: 'section', name: 'Основные понятия', children: [
+    id: 'c8', type: 'folder', name: '8 класс', children: [
+      { id: 'c8-org', type: 'folder', name: 'Основные понятия', children: [
         { id: 'c8-org-1', type: 'topic', name: 'Атом и молекула', files: [
           { name: 'Конспект_атом.pdf', size: '1.2 МБ', date: '15.05.2026' },
           { name: 'Схема_строения.png', size: '340 КБ', date: '15.05.2026' },
@@ -19,8 +19,8 @@ const initialKbTree = [
     ],
   },
   {
-    id: 'c9', type: 'class', name: '9 класс', children: [
-      { id: 'c9-reac', type: 'section', name: 'Типы реакций', children: [
+    id: 'c9', type: 'folder', name: '9 класс', children: [
+      { id: 'c9-reac', type: 'folder', name: 'Типы реакций', children: [
         { id: 'c9-reac-1', type: 'topic', name: 'Реакции замещения', files: [
           { name: 'Конспект_замещение.pdf', size: '890 КБ', date: '10.05.2026' },
         ]},
@@ -29,8 +29,8 @@ const initialKbTree = [
     ],
   },
   {
-    id: 'c10', type: 'class', name: '10 класс', children: [
-      { id: 'c10-org', type: 'section', name: 'Органическая химия', children: [
+    id: 'c10', type: 'folder', name: '10 класс', children: [
+      { id: 'c10-org', type: 'folder', name: 'Органическая химия', children: [
         { id: 'c10-org-alk', type: 'topic', name: 'Алканы', files: [
           { name: 'Алканы_конспект.pdf', size: '1.5 МБ', date: '01.06.2026' },
           { name: 'Таблица_свойств.xlsx', size: '220 КБ', date: '01.06.2026' },
@@ -40,14 +40,11 @@ const initialKbTree = [
       ]},
     ],
   },
+  { id: 'cf1', type: 'folder', name: 'Подготовка к ОГЭ', children: [] },
+  { id: 'cf2', type: 'folder', name: 'Олимпиадные задачи', children: [] },
 ]
 
-const initialCustomFolders = [
-  { id: 'cf1', name: 'Подготовка к ОГЭ', icon: 'ti-folder', count: 7 },
-  { id: 'cf2', name: 'Олимпиадные задачи', icon: 'ti-folder', count: 3 },
-]
-
-export const useStore = create((set, get) => ({
+export const useStore = create((set) => ({
   // Navigation
   activeSection: 'dashboard',
   setActiveSection: (section) => set({ activeSection: section }),
@@ -57,28 +54,19 @@ export const useStore = create((set, get) => ({
   addLesson: (lesson) => set((state) => ({ lessons: [...state.lessons, { ...lesson, id: Date.now() }] })),
   deleteLesson: (id) => set((state) => ({ lessons: state.lessons.filter((l) => l.id !== id) })),
 
-  // Knowledge base tree
+  // Knowledge base tree (single unified tree, user owns everything)
   kbTree: initialKbTree,
   selectedKbNode: null,
   setSelectedKbNode: (id) => set({ selectedKbNode: id }),
-  deleteFile: (topicId, fileName) => set((state) => {
-    const updateTree = (nodes) => nodes.map((n) => {
-      if (n.id === topicId) return { ...n, files: n.files.filter((f) => f.name !== fileName) }
-      if (n.children) return { ...n, children: updateTree(n.children) }
-      return n
-    })
-    return { kbTree: updateTree(state.kbTree) }
-  }),
-  addFiles: (topicId, files) => set((state) => {
-    const updateTree = (nodes) => nodes.map((n) => {
-      if (n.id === topicId) return { ...n, files: [...(n.files || []), ...files] }
-      if (n.children) return { ...n, children: updateTree(n.children) }
-      return n
-    })
-    return { kbTree: updateTree(state.kbTree) }
-  }),
-  addSubfolder: (parentId, name) => set((state) => {
-    const newNode = { id: 'f_' + Date.now(), type: 'section', name, children: [] }
+
+  addRootFolder: (name) => set((state) => ({
+    kbTree: [...state.kbTree, { id: 'f_' + Date.now(), type: 'folder', name, children: [] }],
+  })),
+
+  addChildNode: (parentId, name, type) => set((state) => {
+    const newNode = type === 'topic'
+      ? { id: 'n_' + Date.now(), type: 'topic', name, files: [] }
+      : { id: 'n_' + Date.now(), type: 'folder', name, children: [] }
     const updateTree = (nodes) => nodes.map((n) => {
       if (n.id === parentId) return { ...n, children: [...(n.children || []), newNode] }
       if (n.children) return { ...n, children: updateTree(n.children) }
@@ -87,17 +75,39 @@ export const useStore = create((set, get) => ({
     return { kbTree: updateTree(state.kbTree) }
   }),
 
-  // Custom folders
-  customFolders: initialCustomFolders,
-  addCustomFolder: (name) => set((state) => ({
-    customFolders: [...state.customFolders, { id: 'cf' + Date.now(), name, icon: 'ti-folder', count: 0 }],
-  })),
-  renameCustomFolder: (id, name) => set((state) => ({
-    customFolders: state.customFolders.map((f) => f.id === id ? { ...f, name } : f),
-  })),
-  deleteCustomFolder: (id) => set((state) => ({
-    customFolders: state.customFolders.filter((f) => f.id !== id),
-  })),
+  renameNode: (id, name) => set((state) => {
+    const updateTree = (nodes) => nodes.map((n) => {
+      if (n.id === id) return { ...n, name }
+      if (n.children) return { ...n, children: updateTree(n.children) }
+      return n
+    })
+    return { kbTree: updateTree(state.kbTree) }
+  }),
+
+  deleteNode: (id) => set((state) => {
+    const removeFrom = (nodes) => nodes
+      .filter((n) => n.id !== id)
+      .map((n) => n.children ? { ...n, children: removeFrom(n.children) } : n)
+    return { kbTree: removeFrom(state.kbTree), selectedKbNode: state.selectedKbNode === id ? null : state.selectedKbNode }
+  }),
+
+  deleteFile: (topicId, fileName) => set((state) => {
+    const updateTree = (nodes) => nodes.map((n) => {
+      if (n.id === topicId) return { ...n, files: n.files.filter((f) => f.name !== fileName) }
+      if (n.children) return { ...n, children: updateTree(n.children) }
+      return n
+    })
+    return { kbTree: updateTree(state.kbTree) }
+  }),
+
+  addFiles: (topicId, files) => set((state) => {
+    const updateTree = (nodes) => nodes.map((n) => {
+      if (n.id === topicId) return { ...n, files: [...(n.files || []), ...files] }
+      if (n.children) return { ...n, children: updateTree(n.children) }
+      return n
+    })
+    return { kbTree: updateTree(state.kbTree) }
+  }),
 
   // Toast
   toast: null,
@@ -106,10 +116,3 @@ export const useStore = create((set, get) => ({
     setTimeout(() => set({ toast: null }), 2500)
   },
 }))
-
-export const SYSTEM_FOLDERS = [
-  { id: 'c8',  name: '8 класс',  icon: 'ti-school', count: 12 },
-  { id: 'c9',  name: '9 класс',  icon: 'ti-school', count: 18 },
-  { id: 'c10', name: '10 класс', icon: 'ti-school', count: 24 },
-  { id: 'c11', name: '11 класс', icon: 'ti-school', count: 15 },
-]

@@ -2,27 +2,30 @@
 sqlalchemy==2.0.30
 psycopg2-binary==2.9.9
 
-# Async HTTP (для Miro API, Zoom API)
+# Browser automation (VCS integration)
+playwright==1.44.0
+
+# Async HTTP (ElevenLabs TTS, Miro API)
 httpx==0.27.0
+
+# Audio conversion (MP3→PCM для ElevenLabs)
+pydub==0.25.1
+# + системная зависимость: apt-get install ffmpeg
 
 # Utils
 python-dotenv==1.0.1
 
-# ── Подключить по мере реализации ─────────────────────────────────────────
-# LLM
+# ── ASR (раскомментировать на сервере) ────────────────────────────────────
+# faster-whisper==1.0.3
+# webrtcvad==2.0.10
+# numpy==1.26.4
+
+# ── TTS локальный (альтернатива ElevenLabs) ───────────────────────────────
+# torch==2.3.0          # CPU-сборка: pip install torch --index-url https://download.pytorch.org/whl/cpu
+# torchaudio==2.3.0
+
+# ── LLM (следующий этап) ──────────────────────────────────────────────────
 # anthropic>=0.28.0
 
-# TTS
-# elevenlabs>=1.3.0
-# silero-tts  (CPU-вариант, без GPU)
-
-# ASR
-# faster-whisper>=1.0.0
-# webrtcvad>=2.0.10
-
-# Audio I/O
-# sounddevice>=0.4.6
-# numpy>=1.26.0
-
-# Miro
+# ── Miro (следующий этап) ─────────────────────────────────────────────────
 # miro-api-python>=2.1.0

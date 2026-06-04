@@ -17,24 +17,31 @@ class Config:
     )
 
     # ── Оркестратор ────────────────────────────────────────────────────────
-    # Как часто проверять расписание (секунды)
     poll_interval: int = field(
         default_factory=lambda: int(os.getenv("SCHEDULER_POLL_INTERVAL", "30"))
     )
-    # За сколько секунд до scheduled_at запускать бота
     launch_offset: int = field(
         default_factory=lambda: int(os.getenv("BOT_LAUNCH_OFFSET_SEC", "60"))
     )
-    # Сколько секунд ждать ученика после scheduled_at прежде чем пометить MISSED
     missed_timeout: int = field(
         default_factory=lambda: int(os.getenv("BOT_MISSED_TIMEOUT_SEC", "600"))
     )
-    # Максимальное количество одновременных сессий
     max_concurrent_sessions: int = field(
         default_factory=lambda: int(os.getenv("BOT_MAX_CONCURRENT", "5"))
     )
 
-    # ── Внешние сервисы (заглушки — заполнить в .env) ─────────────────────
+    # ── VCS / Playwright ───────────────────────────────────────────────────
+    # false  — использовать реальные Zoom/Yandex клиенты (нужен playwright)
+    # true   — всегда использовать StubVCSClient (для CI, dev без браузера)
+    vcs_stub_mode: bool = field(
+        default_factory=lambda: os.getenv("VCS_STUB_MODE", "false").lower() == "true"
+    )
+    # Таймаут подключения к конференции (секунды)
+    vcs_connect_timeout: int = field(
+        default_factory=lambda: int(os.getenv("VCS_CONNECT_TIMEOUT", "60"))
+    )
+
+    # ── Внешние сервисы ────────────────────────────────────────────────────
     anthropic_api_key: str = field(
         default_factory=lambda: os.getenv("ANTHROPIC_API_KEY", "")
     )
@@ -44,9 +51,6 @@ class Config:
     miro_access_token: str = field(
         default_factory=lambda: os.getenv("MIRO_ACCESS_TOKEN", "")
     )
-    zoom_api_key: str = field(
-        default_factory=lambda: os.getenv("ZOOM_API_KEY", "")
-    )
 
     # ── Логирование ────────────────────────────────────────────────────────
     log_level: str = field(
@@ -54,5 +58,4 @@ class Config:
     )
 
 
-# Синглтон
 config = Config()

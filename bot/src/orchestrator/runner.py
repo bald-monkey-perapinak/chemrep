@@ -2,15 +2,13 @@
 LessonRunner — управляет одним активным уроком.
 
 Жизненный цикл:
-  1. prepare()  — загрузить данные из БД (тема, сценарий, файлы)
-  2. run()      — подключиться к конференции, вести урок по шагам
-  3. finish()   — отключиться, сохранить транскрипт, обновить статус
+  prepare()  — создать LessonSession, перевести урок в IN_PROGRESS
+  run()      — подключиться к конференции, вести урок по сценарию
+  cleanup()  — отключиться, сохранить транскрипт и результаты
 
-Каждый шаг сценария:
-  - бот синтезирует текст в речь (TTS, заглушка)
-  - отправляет аудио в конференцию
-  - слушает ответ ученика (ASR, заглушка)
-  - логирует в LessonSession.dialog_history и event_log
+Аудио-pipeline на каждом шаге:
+  текст шага → TTS.synthesize() → PCM → vcs.send_audio() (бот говорит)
+  vcs.recv_audio() → VAD → PhraseBuffer → Whisper → текст (бот слушает)
 """
 
 from __future__ import annotations
@@ -29,21 +27,27 @@ from sqlalchemy.orm import Session
 from src.models.lesson import Lesson, LessonStatus
 from src.models.session import LessonSession, SessionStatus
 from src.vcs.client import make_vcs_client, VCSConnectionInfo, VCSPlatformType
+from src.audio.tts import make_tts, BaseTTS
+from src.audio.asr import make_asr
 
 logger = logging.getLogger(__name__)
 
-# Сколько секунд «говорить» один шаг сценария в заглушке
-STEP_SPEAK_DELAY = 2.0
-# Сколько секунд «слушать» ответ ученика
-LISTEN_DELAY = 3.0
+# Сколько секунд слушать ученика после каждого шага
+LISTEN_TIMEOUT   = 12.0
+# Пауза (сек) между шагами
+STEP_PAUSE       = 1.0
+# Размер PCM-чанка для отправки в VCS (20 мс = 640 байт)
+CHUNK_SIZE       = 640
 
 
 class LessonRunner:
     def __init__(self, lesson: Lesson, db: Session):
-        self.lesson = lesson
-        self.db = db
+        self.lesson  = lesson
+        self.db      = db
         self.session: LessonSession | None = None
-        self._vcs = None
+        self._vcs    = None
+        self._tts: BaseTTS | None = None
+        self._asr    = None
         self._dialog: list[dict] = []
         self._events: list[dict] = []
 
@@ -52,9 +56,9 @@ class LessonRunner:
     # ──────────────────────────────────────────────────────────────────────
 
     async def run(self) -> None:
-        """Главный метод — запускает полный цикл урока."""
         try:
             await self._prepare()
+            await self._init_audio()
             await self._connect_vcs()
             await self._conduct_lesson()
         except asyncio.CancelledError:
@@ -68,18 +72,14 @@ class LessonRunner:
             await self._cleanup()
 
     # ──────────────────────────────────────────────────────────────────────
-    # Внутренние этапы
+    # Подготовка
     # ──────────────────────────────────────────────────────────────────────
 
     async def _prepare(self) -> None:
-        """Создать или восстановить LessonSession, загрузить сценарий."""
         lesson = self.lesson
-
-        # Убедиться, что урок ещё в статусе SCHEDULED
         if lesson.status not in (LessonStatus.SCHEDULED,):
             raise RuntimeError(f"Урок {lesson.id} уже в статусе {lesson.status}")
 
-        # Создать сессию
         self.session = LessonSession(
             lesson_id=lesson.id,
             status=SessionStatus.STARTING,
@@ -88,23 +88,39 @@ class LessonRunner:
             event_log=[],
         )
         self.db.add(self.session)
-
-        # Перевести урок в IN_PROGRESS
-        lesson.status = LessonStatus.IN_PROGRESS
+        lesson.status     = LessonStatus.IN_PROGRESS
         lesson.started_at = datetime.now(timezone.utc)
         self.db.commit()
 
         logger.info(
-            "[runner %s] Подготовка завершена. Тема: %s, шагов: %d",
+            "[runner %s] Подготовка: ученик=%s, тема=%s, шагов=%d",
             lesson.id,
+            lesson.student.full_name if lesson.student else "—",
             lesson.topic.name if lesson.topic else "—",
             self.session.total_steps,
         )
 
-    async def _connect_vcs(self) -> None:
-        """Подключиться к конференции."""
+    async def _init_audio(self) -> None:
+        """Инициализировать TTS и ASR (загрузка моделей)."""
         lesson = self.lesson
-        info = VCSConnectionInfo(
+
+        # Голос преподавателя — берём voice_id из профиля
+        voice_id = None
+        if lesson.teacher and lesson.teacher.voice_model_path:
+            # voice_model_path хранит ElevenLabs voice_id после клонирования
+            voice_id = lesson.teacher.voice_model_path
+
+        self._tts = make_tts(voice_id=voice_id)
+        self._asr = make_asr()
+
+        # Преждевременная загрузка Whisper — чтобы не было задержки на первом вопросе
+        await self._asr.preload()
+        logger.info("[runner %s] TTS=%s, ASR=%s инициализированы",
+                    lesson.id, type(self._tts).__name__, type(self._asr).__name__)
+
+    async def _connect_vcs(self) -> None:
+        lesson = self.lesson
+        info   = VCSConnectionInfo(
             platform=VCSPlatformType(lesson.vcs_platform.value),
             link=lesson.vcs_link or "",
             display_name=f"Помощник — {lesson.teacher.full_name}",
@@ -112,131 +128,182 @@ class LessonRunner:
         self._vcs = make_vcs_client(info)
         await self._vcs.connect()
 
-        self.session.status = SessionStatus.ACTIVE
+        self.session.status       = SessionStatus.ACTIVE
         self.session.bot_joined_at = datetime.now(timezone.utc)
         self.db.commit()
-
         self._log_event("bot_joined", {"link": lesson.vcs_link})
-        logger.info("[runner %s] Бот подключился к конференции", lesson.id)
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Ведение урока
+    # ──────────────────────────────────────────────────────────────────────
 
     async def _conduct_lesson(self) -> None:
-        """Основной цикл — проход по шагам сценария."""
         lesson = self.lesson
         script = (lesson.topic.lesson_script or []) if lesson.topic else []
+        student_name = lesson.student.full_name.split()[0] if lesson.student else "ученик"
+        topic_name   = lesson.topic.name if lesson.topic else "химии"
 
         if not script:
-            # Нет сценария — простое приветствие
             await self._speak(
-                f"Здравствуйте! Сегодня у нас занятие по теме «{lesson.topic.name if lesson.topic else 'химии'}». "
-                "Сценарий урока ещё не добавлен. Преподаватель скоро подключится."
+                f"Здравствуйте, {student_name}! Сегодня занятие по теме «{topic_name}». "
+                "Сценарий ещё не добавлен — преподаватель скоро подключится."
             )
             await asyncio.sleep(5)
         else:
             # Приветствие
-            student_name = lesson.student.full_name.split()[0] if lesson.student else "ученик"
             await self._speak(
-                f"Здравствуйте, {student_name}! Сегодня мы разберём тему «{lesson.topic.name}». Начнём."
+                f"Здравствуйте, {student_name}! "
+                f"Сегодня мы разберём тему «{topic_name}». Начнём."
             )
-            await asyncio.sleep(1)
+            await asyncio.sleep(STEP_PAUSE)
 
-            # Шаги сценария
             for i, step in enumerate(script):
                 self.session.current_step = i + 1
                 self.db.commit()
 
-                text = step.get("text", "")
-                miro_action = step.get("miro_action")
+                step_text    = step.get("text", "")
+                question     = step.get("question")   # вопрос ученику (опционально)
+                miro_action  = step.get("miro_action")
+                listen_after = step.get("listen", True)  # слушать ли ответ
 
                 logger.info("[runner %s] Шаг %d/%d", lesson.id, i + 1, len(script))
 
                 # Действие на доске Miro
                 if miro_action:
                     self._log_event("miro_action", {"action": miro_action, "step": i + 1})
-                    logger.debug("[runner %s] Miro: %s", lesson.id, miro_action)
-                    # TODO: вызов реального Miro-клиента
+                    # TODO: await miro_client.execute(miro_action)
 
-                # Произнести текст
-                await self._speak(text)
+                # Произнести объяснение
+                if step_text:
+                    await self._speak(step_text)
 
-                # Пауза — «слушаем» ученика
-                await self._listen(timeout=LISTEN_DELAY)
+                # Задать вопрос и послушать ответ
+                if question:
+                    await self._speak(question)
+                    self._log_event("question_asked", {"step": i + 1, "question": question})
+
+                if listen_after and question:
+                    await self._listen_and_respond()
+
+                await asyncio.sleep(STEP_PAUSE)
 
             # Завершение
             await self._speak(
-                "На этом наш урок заканчивается. Домашнее задание придёт вам на почту. До свидания!"
+                "Отлично! На этом наш урок заканчивается. "
+                "Домашнее задание придёт вам на почту. До свидания!"
             )
 
         self.session.status = SessionStatus.FINISHING
         self.db.commit()
-        logger.info("[runner %s] Урок завершён нормально", lesson.id)
+
+    # ──────────────────────────────────────────────────────────────────────
+    # TTS — бот говорит
+    # ──────────────────────────────────────────────────────────────────────
+
+    async def _speak(self, text: str) -> None:
+        """Синтезировать текст и отправить аудио в конференцию чанками."""
+        if not text.strip():
+            return
+
+        logger.info("[runner %s] 🔊 %s", self.lesson.id, text[:100])
+        self._dialog.append({
+            "role": "bot",
+            "text": text,
+            "ts":   datetime.now(timezone.utc).isoformat(),
+        })
+
+        try:
+            pcm = await self._tts.synthesize(text)
+        except Exception as e:
+            logger.error("[runner %s] TTS ошибка: %s", self.lesson.id, e)
+            return
+
+        # Отправляем по 20-мс чанкам, чтобы не переполнять очередь VCS
+        for offset in range(0, len(pcm), CHUNK_SIZE):
+            chunk = pcm[offset: offset + CHUNK_SIZE]
+            if len(chunk) < CHUNK_SIZE:
+                # Добивить тишиной до полного фрейма
+                chunk += b"\x00" * (CHUNK_SIZE - len(chunk))
+            await self._vcs.send_audio(chunk)
+            await asyncio.sleep(0.018)  # ~55 фреймов/сек, чуть быстрее realtime
+
+    # ──────────────────────────────────────────────────────────────────────
+    # ASR — бот слушает
+    # ──────────────────────────────────────────────────────────────────────
+
+    async def _listen_and_respond(self) -> None:
+        """
+        Слушать ответ ученика LISTEN_TIMEOUT секунд.
+        Если ученик что-то сказал — залогировать и подтвердить.
+        Если ничего — мягко продолжить.
+        """
+        heard_anything = False
+
+        async for phrase in self._asr.listen(self._vcs, timeout=LISTEN_TIMEOUT):
+            logger.info("[runner %s] 👂 %s", self.lesson.id, phrase)
+            self._dialog.append({
+                "role": "student",
+                "text": phrase,
+                "ts":   datetime.now(timezone.utc).isoformat(),
+            })
+            self._log_event("student_speech", {"text": phrase})
+            heard_anything = True
+            # После первой фразы выходим — один ответ на вопрос
+            break
+
+        if not heard_anything:
+            logger.info("[runner %s] Тишина — продолжаем", self.lesson.id)
+            await self._speak("Хорошо, двигаемся дальше.")
+
+    # ──────────────────────────────────────────────────────────────────────
+    # Завершение
+    # ──────────────────────────────────────────────────────────────────────
 
     async def _cleanup(self) -> None:
-        """Отключиться, сохранить результаты."""
         now = datetime.now(timezone.utc)
 
-        # Отключиться от конференции
         if self._vcs and self._vcs.connected:
             try:
                 await self._vcs.disconnect()
             except Exception as e:
-                logger.warning("[runner %s] Ошибка при отключении VCS: %s", self.lesson.id, e)
+                logger.warning("[runner %s] Ошибка VCS disconnect: %s", self.lesson.id, e)
 
-        # Финализировать сессию и урок
+        if self._tts:
+            try:
+                await self._tts.close()
+            except Exception:
+                pass
+
         if self.session:
             if self.session.status not in (SessionStatus.FAILED,):
                 self.session.status = SessionStatus.ENDED
-            self.session.bot_left_at = now
-            self.session.dialog_history = self._dialog
-            self.session.event_log = self._events
+            self.session.bot_left_at      = now
+            self.session.dialog_history   = self._dialog
+            self.session.event_log        = self._events
 
         lesson = self.lesson
         if lesson.status == LessonStatus.IN_PROGRESS:
             lesson.status = LessonStatus.COMPLETED
         lesson.finished_at = now
-        lesson.transcript = self._build_transcript()
+        lesson.transcript  = self._build_transcript()
 
         try:
             self.db.commit()
         except Exception as e:
-            logger.error("[runner %s] Ошибка при сохранении результатов: %s", lesson.id, e)
+            logger.error("[runner %s] Ошибка сохранения: %s", self.lesson.id, e)
 
-        logger.info("[runner %s] Очистка завершена. Статус: %s", lesson.id, lesson.status)
+        logger.info("[runner %s] ✓ Завершено. Статус=%s, фраз=%d",
+                    lesson.id, lesson.status, len(self._dialog))
 
     # ──────────────────────────────────────────────────────────────────────
-    # Вспомогательные методы
+    # Вспомогательное
     # ──────────────────────────────────────────────────────────────────────
-
-    async def _speak(self, text: str) -> None:
-        """TTS + отправка аудио в конференцию (сейчас — заглушка)."""
-        logger.info("[runner %s] 🔊 %s", self.lesson.id, text[:80])
-        self._dialog.append({
-            "role": "bot",
-            "text": text,
-            "ts": datetime.now(timezone.utc).isoformat(),
-        })
-        # TODO: синтезировать текст через TTS (ElevenLabs / Silero)
-        # pcm = await tts_client.synthesize(text)
-        # await self._vcs.send_audio(pcm)
-        await asyncio.sleep(STEP_SPEAK_DELAY)  # эмулируем длительность речи
-
-    async def _listen(self, timeout: float = 5.0) -> str:
-        """ASR — слушаем ответ ученика (сейчас — заглушка)."""
-        # TODO: recv_audio + whisper/faster-whisper
-        await asyncio.sleep(timeout)
-        text = ""
-        if text:
-            self._dialog.append({
-                "role": "student",
-                "text": text,
-                "ts": datetime.now(timezone.utc).isoformat(),
-            })
-        return text
 
     def _log_event(self, kind: str, data: dict) -> None:
         self._events.append({
             "kind": kind,
             "data": data,
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "ts":   datetime.now(timezone.utc).isoformat(),
         })
 
     def _build_transcript(self) -> str:
@@ -248,11 +315,11 @@ class LessonRunner:
 
     async def _mark_failed(self, reason: str) -> None:
         if self.session:
-            self.session.status = SessionStatus.FAILED
+            self.session.status        = SessionStatus.FAILED
             self.session.error_message = reason
         self.lesson.status = LessonStatus.CANCELLED
+        self._log_event("error", {"reason": reason})
         try:
             self.db.commit()
         except Exception:
             pass
-        self._log_event("error", {"reason": reason})

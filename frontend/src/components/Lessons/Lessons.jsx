@@ -1,62 +1,85 @@
 import { useStore } from '../../store/useStore'
-import { fmtDate } from '../../utils/helpers'
+
+const STATUS = {
+  scheduled:   { cls: 'badge-upcoming', label: 'Запланировано' },
+  in_progress: { cls: 'badge-active',   label: 'Идёт сейчас' },
+  completed:   { cls: 'badge-active',   label: 'Завершено' },
+  cancelled:   { cls: 'badge-ya',       label: 'Отменено' },
+  missed:      { cls: 'badge-ya',       label: 'Пропущено' },
+}
+
+function fmtDt(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  const mo = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек']
+  return `${d.getDate()} ${mo[d.getMonth()]}, ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+}
 
 export default function Lessons() {
-  const lessons = useStore((s) => s.lessons)
-  const deleteLesson = useStore((s) => s.deleteLesson)
+  const lessons       = useStore(s => s.lessons)
+  const deleteLesson  = useStore(s => s.deleteLesson)
+  const showToast     = useStore(s => s.showToast)
 
-  const sorted = [...lessons].sort((a, b) =>
-    a.date + a.time < b.date + b.time ? 1 : -1
-  )
+  const sorted = [...lessons].sort((a, b) => a.scheduled_at > b.scheduled_at ? -1 : 1)
+
+  async function remove(id) {
+    if (!confirm('Удалить занятие?')) return
+    try {
+      await deleteLesson(id)
+      showToast('Занятие удалено')
+    } catch (e) {
+      showToast('Ошибка: ' + e.message)
+    }
+  }
 
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
       <table className="lessons-table">
         <thead>
           <tr>
-            <th>Дата и время</th>
-            <th>Ученик</th>
-            <th>Тема</th>
-            <th>Платформа</th>
-            <th>Ссылка</th>
-            <th>Статус</th>
-            <th></th>
+            <th>Дата и время</th><th>Ученик</th><th>Тема</th>
+            <th>Платформа</th><th>Статус</th><th>Сессия</th><th></th>
           </tr>
         </thead>
         <tbody>
-          {sorted.map((l) => (
-            <tr key={l.id}>
-              <td>{fmtDate(l.date)}, {l.time}</td>
-              <td style={{ fontWeight: 500 }}>{l.student}</td>
-              <td>{l.topic}</td>
-              <td>
-                <span className={`badge ${l.platform === 'zoom' ? 'badge-zoom' : 'badge-ya'}`}>
-                  {l.platform === 'zoom' ? 'Zoom' : 'Яндекс Телемост'}
-                </span>
-              </td>
-              <td>
-                <a href={l.link} className="link-btn" target="_blank" rel="noreferrer">
-                  <i className="ti ti-external-link"></i> Открыть
-                </a>
-              </td>
-              <td>
-                <span className={`badge ${l.status === 'done' ? 'badge-active' : 'badge-upcoming'}`}>
-                  {l.status === 'done' ? 'Завершено' : 'Предстоит'}
-                </span>
-              </td>
-              <td>
-                <button className="btn btn-sm btn-danger" onClick={() => deleteLesson(l.id)}>
-                  <i className="ti ti-trash"></i>
-                </button>
-              </td>
-            </tr>
-          ))}
+          {sorted.map(l => {
+            const badge = STATUS[l.status] || { cls: '', label: l.status }
+            const sess  = l.session
+            return (
+              <tr key={l.id}>
+                <td>{fmtDt(l.scheduled_at)}</td>
+                <td style={{ fontWeight: 500 }}>{l.student_name || '—'}</td>
+                <td>{l.topic_name || '—'}</td>
+                <td>
+                  <span className={`badge ${l.vcs_platform === 'zoom' ? 'badge-zoom' : 'badge-ya'}`}>
+                    {l.vcs_platform === 'zoom' ? 'Zoom' : 'Телемост'}
+                  </span>
+                </td>
+                <td><span className={`badge ${badge.cls}`}>{badge.label}</span></td>
+                <td>
+                  {sess ? (
+                    <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+                      {sess.status === 'active' ? `Шаг ${sess.current_step}/${sess.total_steps}` : sess.status}
+                    </span>
+                  ) : '—'}
+                </td>
+                <td style={{ display: 'flex', gap: 6 }}>
+                  {l.vcs_link && (
+                    <a href={l.vcs_link} className="btn btn-sm" target="_blank" rel="noreferrer">
+                      <i className="ti ti-external-link"></i>
+                    </a>
+                  )}
+                  <button className="btn btn-sm btn-danger" onClick={() => remove(l.id)}>
+                    <i className="ti ti-trash"></i>
+                  </button>
+                </td>
+              </tr>
+            )
+          })}
           {sorted.length === 0 && (
-            <tr>
-              <td colSpan={7} style={{ textAlign: 'center', padding: 40, color: 'var(--color-text-muted)' }}>
-                Нет занятий
-              </td>
-            </tr>
+            <tr><td colSpan={7} style={{ textAlign: 'center', padding: 40, color: 'var(--color-text-muted)' }}>
+              Нет занятий
+            </td></tr>
           )}
         </tbody>
       </table>

@@ -36,6 +36,8 @@ from src.audio.tts import make_tts, BaseTTS
 from src.audio.asr import make_asr
 from src.dialog.retriever import RAGRetriever
 from src.dialog.engine import make_dialog_engine, BaseDialogEngine
+from src.miro.client import make_miro_client, BaseMiroClient
+from src.orchestrator.homework import deliver_homework
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,7 @@ class LessonRunner:
         self._tts: BaseTTS | None           = None
         self._asr    = None
         self._llm: BaseDialogEngine | None  = None
+        self._miro: BaseMiroClient | None   = None
         self._dialog: list[dict] = []
         self._events: list[dict] = []
 
@@ -65,6 +68,7 @@ class LessonRunner:
             await self._prepare()
             await self._init_audio()
             await self._init_dialog()
+            await self._init_miro()
             await self._connect_vcs()
             await self._conduct_lesson()
         except asyncio.CancelledError:
@@ -138,6 +142,13 @@ class LessonRunner:
         )
         logger.info("[runner %s] LLM=%s", lesson.id, type(self._llm).__name__)
 
+    async def _init_miro(self) -> None:
+        topic = self.lesson.topic
+        board_id = topic.miro_board_id if topic else None
+        self._miro = make_miro_client(board_id=board_id)
+        logger.info("[runner %s] Miro=%s  board=%s",
+                    self.lesson.id, type(self._miro).__name__, board_id)
+
     async def _connect_vcs(self) -> None:
         lesson = self.lesson
         info   = VCSConnectionInfo(
@@ -191,7 +202,7 @@ class LessonRunner:
 
                 if miro_action:
                     self._log_event("miro_action", {"action": miro_action, "step": i + 1})
-                    # TODO: await miro_client.execute(miro_action)
+                    await self._miro.execute(miro_action)
 
                 if step_text:
                     await self._speak(step_text)
@@ -334,7 +345,7 @@ class LessonRunner:
             except Exception as e:
                 logger.warning("[runner %s] VCS disconnect: %s", self.lesson.id, e)
 
-        for resource in (self._tts, self._llm):
+        for resource in (self._tts, self._llm, self._miro):
             if resource:
                 try:
                     await resource.close()
@@ -347,6 +358,12 @@ class LessonRunner:
             self.session.bot_left_at    = now
             self.session.dialog_history = self._dialog
             self.session.event_log      = self._events
+
+        # Отправить домашнее задание
+        try:
+            await deliver_homework(self.db, self.lesson)
+        except Exception as e:
+            logger.error("[runner %s] Ошибка отправки ДЗ: %s", self.lesson.id, e)
 
         lesson = self.lesson
         if lesson.status == LessonStatus.IN_PROGRESS:

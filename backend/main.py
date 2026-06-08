@@ -6,12 +6,17 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.routes.knowledge import router as knowledge_router
+from src.api.routes.auth      import router as auth_router
+from src.api.routes.knowledge  import router as knowledge_router
+from src.api.routes.students   import router as students_router
+from src.api.routes.lessons    import router as lessons_router
+from src.api.routes.sessions   import router as sessions_router
+from src.api.routes.voice      import router as voice_router
 
 app = FastAPI(
     title="ХимТьютор API",
     description="Backend для сервиса автоматизированных уроков по химии",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 app.add_middleware(
@@ -28,12 +33,9 @@ def health():
     return {"status": "ok"}
 
 
-# ── Роутеры ────────────────────────────────────────────────────────────────
+app.include_router(auth_router,      prefix="/api")
 app.include_router(knowledge_router, prefix="/api")
-
-# По мере реализации подключать:
-# from src.api.routes import auth, lessons, students, sessions
-# app.include_router(auth.router,      prefix="/api/auth",      tags=["auth"])
-# app.include_router(lessons.router,   prefix="/api/lessons",   tags=["lessons"])
-# app.include_router(students.router,  prefix="/api/students",  tags=["students"])
-# app.include_router(sessions.router,  prefix="/api/sessions",  tags=["sessions"])
+app.include_router(students_router,  prefix="/api")
+app.include_router(lessons_router,   prefix="/api")
+app.include_router(sessions_router,  prefix="/api")
+app.include_router(voice_router,     prefix="/api")

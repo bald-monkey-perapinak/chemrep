@@ -12,6 +12,7 @@ from src.api.routes.students   import router as students_router
 from src.api.routes.lessons    import router as lessons_router
 from src.api.routes.sessions   import router as sessions_router
 from src.api.routes.voice      import router as voice_router
+from src.api.routes.sse        import router as sse_router
 
 app = FastAPI(
     title="ХимТьютор API",
@@ -39,3 +40,4 @@ app.include_router(students_router,  prefix="/api")
 app.include_router(lessons_router,   prefix="/api")
 app.include_router(sessions_router,  prefix="/api")
 app.include_router(voice_router,     prefix="/api")
+app.include_router(sse_router,       prefix="/api")

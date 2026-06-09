@@ -64,6 +64,13 @@ export default function Lessons() {
                   ) : '—'}
                 </td>
                 <td style={{ display: 'flex', gap: 6 }}>
+                  {(l.status === 'in_progress' || l.status === 'scheduled') && (
+                    <button className="btn btn-sm" title="Следить за уроком"
+                      onClick={() => window.__openMonitor?.(l.id)}
+                      style={{ color: 'var(--color-accent)' }}>
+                      <i className="ti ti-broadcast"></i>
+                    </button>
+                  )}
                   {l.vcs_link && (
                     <a href={l.vcs_link} className="btn btn-sm" target="_blank" rel="noreferrer">
                       <i className="ti ti-external-link"></i>

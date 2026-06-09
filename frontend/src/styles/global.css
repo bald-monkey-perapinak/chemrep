@@ -461,3 +461,9 @@ body {
   white-space: nowrap;
 }
 .toast-msg.show { opacity: 1; }
+
+/* SSE Monitor pulse animation */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}

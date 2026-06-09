@@ -8,6 +8,7 @@ import Students from './components/Students/Students'
 import Settings from './pages/Settings'
 import LoginPage from './pages/LoginPage'
 import NewLessonModal from './components/shared/NewLessonModal'
+import LessonMonitor from './components/shared/LessonMonitor'
 import Toast from './components/shared/Toast'
 
 const SECTIONS = [
@@ -29,8 +30,10 @@ export default function App() {
 
   const [lessonModalOpen, setLessonModalOpen] = useState(false)
   const [lessonModalDate, setLessonModalDate] = useState(null)
+  const [monitorLessonId, setMonitorLessonId] = useState(null)
 
   useEffect(() => { initAuth() }, [])
+  useEffect(() => { window.__openMonitor = setMonitorLessonId }, [setMonitorLessonId])
 
   function openNewLesson(date) {
     setLessonModalDate(date || null)
@@ -102,6 +105,12 @@ export default function App() {
         />
       )}
       <Toast />
+      {monitorLessonId && (
+        <LessonMonitor
+          lessonId={monitorLessonId}
+          onClose={() => setMonitorLessonId(null)}
+        />
+      )}
     </div>
   )
 }

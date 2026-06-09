@@ -39,6 +39,17 @@ from src.dialog.engine import make_dialog_engine, BaseDialogEngine
 from src.miro.client import make_miro_client, BaseMiroClient
 from src.orchestrator.homework import deliver_homework
 
+# EventBus из backend — публикуем события для SSE
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.abspath(_os.path.join(
+    _os.path.dirname(__file__), '..', '..', '..', 'backend')))
+try:
+    from src.events.bus import event_bus as _event_bus
+    _HAS_BUS = True
+except ImportError:
+    _HAS_BUS = False
+    _event_bus = None
+
 logger = logging.getLogger(__name__)
 
 LISTEN_TIMEOUT = 12.0
@@ -101,6 +112,10 @@ class LessonRunner:
         lesson.status     = LessonStatus.IN_PROGRESS
         lesson.started_at = datetime.now(timezone.utc)
         self.db.commit()
+        self._publish('session_started', {
+            'lesson_status': 'in_progress',
+            'total_steps': self.session.total_steps,
+        })
 
         logger.info(
             "[runner %s] Ученик=%s  Тема=%s  Шагов=%d",
@@ -163,6 +178,7 @@ class LessonRunner:
         self.session.bot_joined_at = datetime.now(timezone.utc)
         self.db.commit()
         self._log_event("bot_joined", {"link": lesson.vcs_link})
+        self._publish('bot_joined', {'link': lesson.vcs_link, 'session_status': 'active'})
 
     # ──────────────────────────────────────────────────────────────────────
     # Ведение урока
@@ -192,6 +208,11 @@ class LessonRunner:
             for i, step in enumerate(script):
                 self.session.current_step = i + 1
                 self.db.commit()
+                self._publish('step_started', {
+                    'step': i + 1,
+                    'total': len(script),
+                    'text': step_text[:120] if step_text else None,
+                })
 
                 step_text   = step.get("text", "")
                 question    = step.get("question")
@@ -202,6 +223,7 @@ class LessonRunner:
 
                 if miro_action:
                     self._log_event("miro_action", {"action": miro_action, "step": i + 1})
+                    self._publish('miro_action', {'action': miro_action, 'step': i + 1})
                     await self._miro.execute(miro_action)
 
                 if step_text:
@@ -210,6 +232,7 @@ class LessonRunner:
                 if question:
                     await self._speak(question)
                     self._log_event("question_asked", {"step": i + 1, "question": question})
+                    self._publish('question_asked', {'step': i + 1, 'question': question})
 
                 if listen_after and question:
                     await self._listen_and_respond()
@@ -252,6 +275,7 @@ class LessonRunner:
                 "ts":   datetime.now(timezone.utc).isoformat(),
             })
             self._log_event("student_question", {"text": phrase})
+            self._publish('student_question', {'text': phrase})
 
             # Генерируем ответ через LLM
             try:
@@ -267,6 +291,7 @@ class LessonRunner:
                 logger.error("[runner %s] LLM ошибка: %s", self.lesson.id, e)
                 reply = "Хороший вопрос, давай вернёмся к нему чуть позже."
 
+            self._publish('bot_reply', {'text': reply})
             await self._speak(reply)
 
             if asyncio.get_event_loop().time() >= deadline:
@@ -290,6 +315,7 @@ class LessonRunner:
                 "ts":   datetime.now(timezone.utc).isoformat(),
             })
             self._log_event("student_speech", {"text": phrase})
+            self._publish('student_speech', {'text': phrase})
             heard = True
 
             try:
@@ -361,7 +387,11 @@ class LessonRunner:
 
         # Отправить домашнее задание
         try:
-            await deliver_homework(self.db, self.lesson)
+            hw_ok = await deliver_homework(self.db, self.lesson)
+            if hw_ok:
+                self._publish('homework_sent', {
+                    'student_email': self.lesson.student.email if self.lesson.student else None,
+                })
         except Exception as e:
             logger.error("[runner %s] Ошибка отправки ДЗ: %s", self.lesson.id, e)
 
@@ -370,6 +400,15 @@ class LessonRunner:
             lesson.status = LessonStatus.COMPLETED
         lesson.finished_at = now
         lesson.transcript  = self._build_transcript()
+        if lesson.status == LessonStatus.COMPLETED:
+            self._publish('session_ended', {
+                'lesson_status': lesson.status.value,
+                'dialog_lines': len(self._dialog),
+            })
+        else:
+            self._publish('session_failed', {
+                'lesson_status': lesson.status.value,
+            })
 
         try:
             self.db.commit()
@@ -382,6 +421,11 @@ class LessonRunner:
     # ──────────────────────────────────────────────────────────────────────
     # Вспомогательное
     # ──────────────────────────────────────────────────────────────────────
+
+    def _publish(self, kind: str, data: dict | None = None) -> None:
+        """Опубликовать событие в SSE-шину бэкенда."""
+        if _HAS_BUS and _event_bus:
+            _event_bus.publish(self.lesson.id, kind, data or {})
 
     def _log_event(self, kind: str, data: dict) -> None:
         self._events.append({

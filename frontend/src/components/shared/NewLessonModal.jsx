@@ -3,9 +3,9 @@ import Modal from './Modal'
 import { useStore } from '../../store/useStore'
 
 export default function NewLessonModal({ onClose, defaultDate }) {
-  const addLesson   = useStore(s => s.addLesson)
-  const students    = useStore(s => s.students)
-  const showToast   = useStore(s => s.showToast)
+  const addLesson  = useStore(s => s.addLesson)
+  const students   = useStore(s => s.students)
+  const showToast  = useStore(s => s.showToast)
 
   const [studentId, setStudentId] = useState('')
   const [date, setDate]           = useState(defaultDate || new Date().toISOString().slice(0, 10))
@@ -13,26 +13,20 @@ export default function NewLessonModal({ onClose, defaultDate }) {
   const [platform, setPlatform]   = useState('zoom')
   const [link, setLink]           = useState('')
   const [err, setErr]             = useState('')
-  const [saving, setSaving]       = useState(false)
 
-  async function save() {
+  function save() {
     if (!date || !time) { setErr('Укажите дату и время'); return }
-    setSaving(true); setErr('')
-    try {
-      const scheduled_at = new Date(`${date}T${time}:00`).toISOString()
-      await addLesson({
-        student_id:   studentId || null,
-        scheduled_at,
-        vcs_platform: platform,
-        vcs_link:     link.trim() || null,
-      })
-      showToast('Занятие создано')
-      onClose()
-    } catch (e) {
-      setErr(e.message)
-    } finally {
-      setSaving(false)
-    }
+    const student = students.find(s => s.id === studentId)
+    addLesson({
+      student_id:   studentId || null,
+      student_name: student?.full_name || null,
+      scheduled_at: new Date(`${date}T${time}:00`).toISOString(),
+      vcs_platform: platform,
+      vcs_link:     link.trim() || null,
+      topic_name:   null,
+    })
+    showToast('Занятие создано')
+    onClose()
   }
 
   return (
@@ -82,9 +76,7 @@ export default function NewLessonModal({ onClose, defaultDate }) {
       {err && <div className="form-err">{err}</div>}
       <div className="form-actions">
         <button className="btn" onClick={onClose}>Отмена</button>
-        <button className="btn btn-primary" onClick={save} disabled={saving}>
-          {saving ? 'Создаём…' : 'Создать занятие'}
-        </button>
+        <button className="btn btn-primary" onClick={save}>Создать занятие</button>
       </div>
     </Modal>
   )

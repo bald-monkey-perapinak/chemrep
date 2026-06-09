@@ -1,185 +1,104 @@
 import { create } from 'zustand'
-import { api } from '../utils/api'
+
+// Начальные данные для работы без бэкенда
+const initialLessons = [
+  { id: '1', student_name: 'Петров Михаил', scheduled_at: new Date().toISOString(), topic_name: 'Алканы — строение', vcs_platform: 'zoom', vcs_link: 'https://zoom.us/j/123456', status: 'scheduled' },
+  { id: '2', student_name: 'Сидорова Анна', scheduled_at: new Date(Date.now() + 3600000).toISOString(), topic_name: 'Степени окисления', vcs_platform: 'yandex', vcs_link: 'https://telemost.yandex.ru/j/abc', status: 'scheduled' },
+]
+
+const initialStudents = [
+  { id: '1', full_name: 'Петров Михаил', email: 'petrov@mail.ru', grade: 10 },
+  { id: '2', student_name: 'Сидорова Анна', email: 'sidorova@mail.ru', grade: 9 },
+]
+
+const initialKbTree = [
+  {
+    id: 'c10', type: 'folder', name: '10 класс', children: [
+      { id: 'c10-org', type: 'folder', name: 'Органическая химия', children: [
+        { id: 'c10-alk', type: 'topic', name: 'Алканы', files: [
+          { id: 'f1', name: 'Алканы_конспект.pdf', size: '1.5 МБ', date: '01.06.2026' },
+        ]},
+        { id: 'c10-alk2', type: 'topic', name: 'Алкены', files: [] },
+      ]},
+    ],
+  },
+  {
+    id: 'c9', type: 'folder', name: '9 класс', children: [
+      { id: 'c9-r', type: 'folder', name: 'Типы реакций', children: [
+        { id: 'c9-r1', type: 'topic', name: 'Реакции замещения', files: [] },
+      ]},
+    ],
+  },
+]
 
 export const useStore = create((set, get) => ({
-  // ── Auth ──────────────────────────────────────────────────────────────
-  teacher:    null,
-  authReady:  false,
-  setTeacher: (teacher) => set({ teacher }),
-
-  initAuth: async () => {
-    const token = localStorage.getItem('token')
-    if (!token) { set({ authReady: true }); return }
-    try {
-      const teacher = await api.me()
-      set({ teacher, authReady: true })
-      get().fetchAll()
-    } catch {
-      localStorage.removeItem('token')
-      set({ authReady: true })
-    }
-  },
-
-  logout: () => {
-    api.logout()
-    set({ teacher: null, lessons: [], students: [] })
-  },
-
   // ── Navigation ────────────────────────────────────────────────────────
   activeSection: 'dashboard',
   setActiveSection: (section) => set({ activeSection: section }),
 
   // ── Lessons ───────────────────────────────────────────────────────────
-  lessons:       [],
+  lessons: initialLessons,
   lessonsLoading: false,
 
-  fetchLessons: async () => {
-    set({ lessonsLoading: true })
-    try {
-      const lessons = await api.listLessons({ limit: 100 })
-      set({ lessons })
-    } catch (e) {
-      console.error('fetchLessons:', e)
-    } finally {
-      set({ lessonsLoading: false })
-    }
-  },
-
-  addLesson: async (data) => {
-    const lesson = await api.createLesson(data)
+  addLesson: (data) => {
+    const lesson = { ...data, id: Date.now().toString(), status: 'scheduled' }
     set(s => ({ lessons: [lesson, ...s.lessons] }))
     return lesson
   },
 
-  deleteLesson: async (id) => {
-    await api.deleteLesson(id)
-    set(s => ({ lessons: s.lessons.filter(l => l.id !== id) }))
-  },
+  deleteLesson: (id) => set(s => ({ lessons: s.lessons.filter(l => l.id !== id) })),
 
   // ── Students ──────────────────────────────────────────────────────────
-  students:       [],
+  students: initialStudents,
   studentsLoading: false,
 
-  fetchStudents: async () => {
-    set({ studentsLoading: true })
-    try {
-      const students = await api.listStudents()
-      set({ students })
-    } catch (e) {
-      console.error('fetchStudents:', e)
-    } finally {
-      set({ studentsLoading: false })
-    }
-  },
-
-  addStudent: async (data) => {
-    const student = await api.createStudent(data)
+  addStudent: (data) => {
+    const student = { ...data, id: Date.now().toString(), is_active: true }
     set(s => ({ students: [student, ...s.students] }))
     return student
   },
 
-  deleteStudent: async (id) => {
-    await api.deleteStudent(id)
-    set(s => ({ students: s.students.filter(s => s.id !== id) }))
-  },
+  deleteStudent: (id) => set(s => ({ students: s.students.filter(s => s.id !== id) })),
 
-  // ── Knowledge base (tree managed via API) ────────────────────────────
-  kbTree:        [],
-  kbLoading:     false,
+  // ── Knowledge base ────────────────────────────────────────────────────
+  kbTree: initialKbTree,
+  kbLoading: false,
   selectedKbNode: null,
   setSelectedKbNode: (id) => set({ selectedKbNode: id }),
 
-  fetchKbTree: async () => {
-    set({ kbLoading: true })
-    try {
-      const classes = await api.listClasses()
-      // Build local tree from classes (sections loaded on demand)
-      const tree = classes.map(c => ({
-        id: c.id, type: 'folder', name: c.name,
-        children: (c.sections || []).map(s => ({
-          id: s.id, type: 'folder', name: s.name, children: [],
-        })),
-      }))
-      set({ kbTree: tree })
-    } catch (e) {
-      console.error('fetchKbTree:', e)
-    } finally {
-      set({ kbLoading: false })
-    }
-  },
+  addRootFolder: (name) => set(s => ({
+    kbTree: [...s.kbTree, { id: 'f_' + Date.now(), type: 'folder', name, children: [] }],
+  })),
 
-  addRootFolder: async (name) => {
-    const cls = await api.createClass({ name, sort_order: 0 })
-    set(s => ({ kbTree: [...s.kbTree, { id: cls.id, type: 'folder', name: cls.name, children: [] }] }))
-  },
-
-  renameNode: async (id, name) => {
-    // Try class rename first, then section, then topic
-    for (const fn of [
-      () => api.updateClass(id, { name }),
-      () => api.updateSection(id, { name }),
-      () => api.updateTopic(id, { name }),
-    ]) {
-      try { await fn(); break } catch {}
-    }
-    set(s => ({
-      kbTree: updateNodeName(s.kbTree, id, name),
-    }))
-  },
-
-  deleteNode: async (id) => {
-    for (const fn of [
-      () => api.deleteClass(id),
-      () => api.deleteSection(id),
-      () => api.deleteTopic(id),
-    ]) {
-      try { await fn(); break } catch {}
-    }
-    set(s => ({
-      kbTree: removeNode(s.kbTree, id),
-      selectedKbNode: s.selectedKbNode === id ? null : s.selectedKbNode,
-    }))
-  },
-
-  addChildNode: async (parentId, name, type) => {
-    let newNode
-    if (type === 'folder') {
-      const sec = await api.createSection(parentId, { name, sort_order: 0 })
-        .catch(() => null)
-      if (sec) {
-        newNode = { id: sec.id, type: 'folder', name: sec.name, children: [] }
-      }
-    } else {
-      const topic = await api.createTopic(parentId, { name, sort_order: 0 })
-        .catch(() => null)
-      if (topic) {
-        newNode = { id: topic.id, type: 'topic', name: topic.name, files: [] }
-      }
-    }
-    if (!newNode) return
+  addChildNode: (parentId, name, type) => {
+    const newNode = type === 'topic'
+      ? { id: 'n_' + Date.now(), type: 'topic', name, files: [] }
+      : { id: 'n_' + Date.now(), type: 'folder', name, children: [] }
     set(s => ({ kbTree: addChild(s.kbTree, parentId, newNode) }))
   },
 
-  addFiles: async (topicId, files) => {
-    const result = await api.uploadFiles(topicId, files)
-    const newFiles = (result.uploaded || []).map(f => ({
-      id: f.id, name: f.original_name,
-      size: f.size_bytes ? Math.round(f.size_bytes / 1024) + ' КБ' : '—',
-      date: new Date(f.uploaded_at).toLocaleDateString('ru'),
+  renameNode: (id, name) => set(s => ({
+    kbTree: updateNodeName(s.kbTree, id, name),
+  })),
+
+  deleteNode: (id) => set(s => ({
+    kbTree: removeNode(s.kbTree, id),
+    selectedKbNode: s.selectedKbNode === id ? null : s.selectedKbNode,
+  })),
+
+  addFiles: (topicId, files) => {
+    const newFiles = Array.from(files).map(f => ({
+      id: 'file_' + Date.now() + '_' + f.name,
+      name: f.name,
+      size: f.size > 1048576 ? (f.size / 1048576).toFixed(1) + ' МБ' : Math.round(f.size / 1024) + ' КБ',
+      date: new Date().toLocaleDateString('ru'),
     }))
     set(s => ({ kbTree: addFilesToNode(s.kbTree, topicId, newFiles) }))
   },
 
-  deleteFile: async (topicId, fileId) => {
-    await api.deleteFile(fileId)
-    set(s => ({ kbTree: removeFileFromNode(s.kbTree, topicId, fileId) }))
-  },
-
-  fetchAll: () => {
-    get().fetchLessons()
-    get().fetchStudents()
-    get().fetchKbTree()
-  },
+  deleteFile: (topicId, fileId) => set(s => ({
+    kbTree: removeFileFromNode(s.kbTree, topicId, fileId),
+  })),
 
   // ── Toast ─────────────────────────────────────────────────────────────
   toast: null,

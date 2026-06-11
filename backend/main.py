@@ -4,6 +4,8 @@
 """
 
 import os
+import logging
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 # Загружаем .env из корня проекта (../.env)
@@ -22,22 +24,25 @@ from src.api.routes.sessions   import router as sessions_router
 from src.api.routes.voice      import router as voice_router
 from src.api.routes.sse        import router as sse_router
 
-app = FastAPI(
-    title="ХимТьютор API",
-    description="Backend для сервиса автоматизированных уроков по химии",
-    version="0.3.0",
-)
 
-
-@app.on_event("startup")
-def startup():
-    """Инициализация при старте: создание S3 bucket."""
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: создание S3 bucket
     try:
         from src.utils.s3 import ensure_bucket
         ensure_bucket()
     except Exception as e:
-        import logging
         logging.getLogger(__name__).warning("Не удалось инициализировать S3: %s", e)
+    yield
+    # Shutdown: cleanup если нужен
+
+
+app = FastAPI(
+    title="ХимТьютор API",
+    description="Backend для сервиса автоматизированных уроков по химии",
+    version="0.3.0",
+    lifespan=lifespan,
+)
 
 app.add_middleware(
     CORSMiddleware,

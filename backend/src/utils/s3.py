@@ -25,17 +25,21 @@ S3_BUCKET     = os.getenv("S3_BUCKET", "chemrep-files")
 S3_REGION     = os.getenv("S3_REGION", "us-east-1")
 
 _presigned_url_ttl = 3600  # 1 час
+_client = None
 
 
 def _get_client():
-    return boto3.client(
-        "s3",
-        endpoint_url=S3_ENDPOINT,
-        aws_access_key_id=S3_ACCESS_KEY,
-        aws_secret_access_key=S3_SECRET_KEY,
-        region_name=S3_REGION,
-        config=Config(signature_version="s3v4"),
-    )
+    global _client
+    if _client is None:
+        _client = boto3.client(
+            "s3",
+            endpoint_url=S3_ENDPOINT,
+            aws_access_key_id=S3_ACCESS_KEY,
+            aws_secret_access_key=S3_SECRET_KEY,
+            region_name=S3_REGION,
+            config=Config(signature_version="s3v4"),
+        )
+    return _client
 
 
 def ensure_bucket() -> None:

@@ -300,7 +300,7 @@ async def upload_files(
             logger.error("[Knowledge] Ошибка загрузки в S3: %s", e)
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Ошибка загрузки файла в хранилище: {e}",
+                detail="Ошибка загрузки файла в хранилище",
             )
 
         # Извлечение текста для RAG
@@ -369,7 +369,9 @@ def search_topics(db: Session, teacher_id: UUID, q: str, limit: int = 20) -> lis
     q = q.strip()
     if not q:
         return []
-    pattern = f"%{q}%"
+    # Экранируем спецсимволы SQL LIKE
+    safe = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    pattern = f"%{safe}%"
     return (
         db.query(KnowledgeTopic)
         .join(KnowledgeSection, KnowledgeTopic.section_id == KnowledgeSection.id)

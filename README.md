@@ -27,19 +27,20 @@ chemrep/
 │       └── utils/         # api.js (fetch-клиент), helpers.js
 ├── backend/               # REST API (Python / FastAPI)
 │   └── src/
-│       ├── models/        # ORM-модели: teachers, students, lessons, knowledge, homework
+│       ├── models/        # ORM-модели: teachers, students, lessons, knowledge, homework, embeddings
 │       ├── db/            # Миграции Alembic, сиды
 │       ├── api/
 │       │   ├── routes/    # auth, knowledge, students, lessons, sessions, voice, sse
 │       │   └── schemas/   # Pydantic-схемы
 │       ├── events/        # EventBus (asyncio pub/sub для SSE)
-│       └── services/      # Бизнес-логика knowledge
+│       ├── services/      # Бизнес-логика: knowledge, embeddings
+│       └── utils/         # s3.py (MinIO), text_extractor.py (PDF/DOCX), embeddings.py (pgvector)
 ├── bot/                   # Бот-участник конференций (Python)
 │   └── src/
 │       ├── orchestrator/  # Scheduler + LessonRunner + homework delivery
-│       ├── audio/         # TTS (ElevenLabs / Silero) + ASR (Whisper + VAD)
-│       ├── vcs/           # Playwright: Zoom Web Client, Яндекс Телемост
-│       ├── dialog/        # RAG retriever + Claude dialog engine
+│       ├── audio/         # TTS (ElevenLabs / Silero) + ASR (Whisper + VAD) + Recorder
+│       ├── vcs/           # Playwright: Zoom Web Client, Яндекс Телемост + аудио-мост
+│       ├── dialog/        # RAG retriever (pgvector) + Claude dialog engine
 │       └── miro/          # Miro REST API v2 client
 ├── infra/                 # Docker, Nginx
 ├── docs/                  # Архитектурные решения, схемы
@@ -159,6 +160,12 @@ React-приложение (Vite + Zustand), полностью подключё
 
 Бизнес-логика в `src/services/knowledge.py`: проверка владения на каждом уровне иерархии, дедупликация файлов по имени, поддерживаемые MIME-типы (PDF, DOCX, XLSX, PNG, JPEG, TXT).
 
+**Загрузка файлов:**
+- Реальная загрузка в S3/MinIO через boto3
+- Автоматическое извлечение текста из PDF/DOCX/TXT при загрузке
+- Автоматическая индексация эмбеддингов для семантического поиска (pgvector)
+- Presigned URLs для скачивания файлов
+
 **Sessions (`/api/sessions`):**
 
 | Метод | URL | Описание |
@@ -199,14 +206,14 @@ JWT-аутентификация через query-параметр (EventSource 
 
 ```
 SCHEDULED → IN_PROGRESS
-  1. _prepare()     — создать LessonSession в БД
-  2. _init_audio()  — загрузить TTS + Whisper (preload до конференции)
-  3. _init_dialog() — создать RAGRetriever + ClaudeDialogEngine
-  4. _init_miro()   — подключить MiroClient к доске темы
-  5. _connect_vcs() — Playwright → Chromium → Zoom / Телемост
-  6. _conduct()     — шаги сценария: _speak() → _miro.execute() → _listen_and_respond()
-                    → _free_dialog() (Q&A в конце)
-  7. _cleanup()     — deliver_homework() → disconnect VCS → сохранить транскрипт
+  1. _prepare()      — создать LessonSession в БД
+  2. _init_audio()   — загрузить TTS + Whisper (preload до конференции)
+  3. _init_dialog()  — создать RAGRetriever + ClaudeDialogEngine
+  4. _init_miro()    — подключить MiroClient к доске темы
+  5. _connect_vcs()  — Playwright → Chromium → Zoom / Телемост → start_recording()
+  6. _conduct()      — шаги сценария: _speak() → _miro.execute() → _listen_and_respond()
+                    → _free_dialog (Q&A в конце)
+  7. _cleanup()      — stop_recording() → save WAV в S3 → deliver_homework() → disconnect
 → COMPLETED / FAILED
 ```
 
@@ -276,17 +283,26 @@ vcs.recv_audio()
 
 **RAG Retriever (`dialog/retriever.py`):**
 
-Ищет релевантные фрагменты из БД по вопросу ученика без векторной БД — через keyword matching:
+Гибридный поиск релевантных материалов из БД по вопросу ученика:
 
 ```
-вопрос ученика → _extract_keywords() → _keyword_score() по источникам
-
-Источники (по весу):
-  extracted_text файлов темы   ×1.2   ← наивысший приоритет
-  шаги lesson_script           ×1.0
-  мета темы (name/desc/kw)     ×0.5
-  смежные темы раздела         ×0.4   ← только при явном совпадении
+поиск по эмбеддингам (pgvector cosine similarity)
+  → fallback на keyword match (если pgvector недоступен)
+  → ограничение scope: только темы текущего урока и его раздела/класса
 ```
+
+**Источники чанков (по весу):**
+- pgvector embeddings файлов темы    ×1.3   ← семантический поиск
+- pgvector embeddings lesson_script  ×1.3
+- pgvector embeddings мета темы      ×1.0
+- extracted_text файлов (keyword)    ×1.2   ← fallback
+- шаги lesson_script (keyword)       ×1.0
+- мета темы (keyword)                ×0.5
+
+**Индексация:**
+- При загрузке файла: текст извлекается → чанкуется → эмбеддинги сохраняются в pgvector
+- При обновлении темы: lesson_script индексируется автоматически
+- pgvector HNSW-индекс для быстрого приближённого поиска
 
 **Dialog Engine (`dialog/engine.py`):**
 
@@ -329,10 +345,11 @@ teachers
   ├── students          (1:N)
   ├── lessons           (1:N)  →  lesson_sessions (1:1)
   │                             →  homeworks       (1:1)
-  └── knowledge_classes (1:N)
-        └── knowledge_sections (1:N)
-              └── knowledge_topics (1:N)
-                    └── topic_files (1:N)
+  ├── knowledge_classes (1:N)
+  │     └── knowledge_sections (1:N)
+  │           └── knowledge_topics (1:N)
+  │                 └── topic_files (1:N)
+  └── content_embeddings (1:N)  →  pgvector (384-dim, HNSW index)
 ```
 
 | Таблица | Назначение |
@@ -346,6 +363,7 @@ teachers
 | `knowledge_topics` | Темы: `lesson_script` (JSON), `miro_board_id`, `estimated_duration_min`, `is_published` |
 | `topic_files` | Файлы: `original_name`, `storage_path` (S3), `mime_type`, `size_bytes`, `file_role`, `text_extracted` |
 | `homeworks` | ДЗ: `title`, `description`, `file_path`, `delivery_status`, `sent_at`, `due_date` |
+| `content_embeddings` | Эмбеддинги для RAG: `source_type`, `chunk_text`, `embedding` (pgvector 384-dim), HNSW-индекс |
 
 ---
 
@@ -354,6 +372,11 @@ teachers
 | Переменная | По умолчанию | Описание |
 |------------|-------------|----------|
 | `DATABASE_URL` | `postgresql://chemrep:password@localhost:5432/chemrep` | Строка подключения к PostgreSQL |
+| `S3_ENDPOINT` | `http://localhost:9000` | Endpoint S3/MinIO |
+| `S3_BUCKET` | `chemrep-files` | Имя bucket для файлов |
+| `S3_ACCESS_KEY` | `minioadmin` | Access key для S3 |
+| `S3_SECRET_KEY` | `minioadmin` | Secret key для S3 |
+| `EMBEDDING_MODEL` | `paraphrase-multilingual-MiniLM-L12-v2` | Модель sentence-transformers для эмбеддингов |
 | `JWT_SECRET` | `change-me-in-production-please` | Секрет для подписи JWT |
 | `ANTHROPIC_API_KEY` | — | Claude API (LLM-диалог) |
 | `ELEVENLABS_API_KEY` | — | ElevenLabs (TTS + клонирование голоса) |

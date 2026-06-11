@@ -5,6 +5,7 @@ __pycache__/
 .venv/
 venv/
 env/
+bot_venv/
 
 # Build outputs
 dist/

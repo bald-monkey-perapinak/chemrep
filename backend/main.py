@@ -3,6 +3,14 @@
 Запуск: uvicorn main:app --reload --host 0.0.0.0 --port 8000
 """
 
+import os
+from dotenv import load_dotenv
+
+# Загружаем .env из корня проекта (../.env)
+_env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+if os.path.exists(_env_path):
+    load_dotenv(_env_path)
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -17,8 +25,19 @@ from src.api.routes.sse        import router as sse_router
 app = FastAPI(
     title="ХимТьютор API",
     description="Backend для сервиса автоматизированных уроков по химии",
-    version="0.2.0",
+    version="0.3.0",
 )
+
+
+@app.on_event("startup")
+def startup():
+    """Инициализация при старте: создание S3 bucket."""
+    try:
+        from src.utils.s3 import ensure_bucket
+        ensure_bucket()
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("Не удалось инициализировать S3: %s", e)
 
 app.add_middleware(
     CORSMiddleware,

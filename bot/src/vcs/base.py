@@ -47,6 +47,44 @@ AUDIO_QUEUE_MAXSIZE = 100
 UI_TIMEOUT = 30_000
 
 
+class AudioRecorder:
+    """Простой рекордер PCM-фреймов для записи урока."""
+
+    def __init__(self):
+        self._frames: list[bytes] = []
+        self._recording = False
+
+    def start(self):
+        self._frames.clear()
+        self._recording = True
+
+    def stop(self):
+        self._recording = False
+
+    def write(self, pcm_frame: bytes):
+        if self._recording:
+            self._frames.append(pcm_frame)
+
+    def is_recording(self) -> bool:
+        return self._recording
+
+    def get_wav_bytes(self) -> bytes:
+        import io, wave
+        if not self._frames:
+            return b""
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(16000)
+            for frame in self._frames:
+                wf.writeframes(frame)
+        return buf.getvalue()
+
+    def get_duration_sec(self) -> float:
+        return len(self._frames) * 0.02
+
+
 # ─── JavaScript: AudioWorklet, который подаёт наш PCM в MediaStream ───────
 _INJECTOR_WORKLET_JS = """
 class BotMicProcessor extends AudioWorkletProcessor {
@@ -113,6 +151,7 @@ class PlaywrightVCSBase(BaseVCSClient):
         self._send_queue: asyncio.Queue[bytes]  = asyncio.Queue(maxsize=AUDIO_QUEUE_MAXSIZE)
         self._recv_queue: asyncio.Queue[bytes]  = asyncio.Queue(maxsize=AUDIO_QUEUE_MAXSIZE)
         self._audio_task: Optional[asyncio.Task] = None
+        self._recorder = AudioRecorder()
 
     # ── Публичный API ──────────────────────────────────────────────────────
 
@@ -178,9 +217,27 @@ class PlaywrightVCSBase(BaseVCSClient):
     async def recv_audio(self) -> bytes:
         """Получить PCM-фрейм из очереди входящего аудио (блокирует до 100ms)."""
         try:
-            return await asyncio.wait_for(self._recv_queue.get(), timeout=0.1)
+            pcm = await asyncio.wait_for(self._recv_queue.get(), timeout=0.1)
+            self._recorder.write(pcm)
+            return pcm
         except asyncio.TimeoutError:
             return b""
+
+    def start_recording(self) -> None:
+        """Начать запись аудио урока."""
+        self._recorder.start()
+        logger.info("[%s] Запись аудио начата", self.__class__.__name__)
+
+    def stop_recording(self) -> bytes:
+        """Остановить запись и вернуть WAV-данные."""
+        self._recorder.stop()
+        wav_data = self._recorder.get_wav_bytes()
+        logger.info("[%s] Запись аудио остановлена: %.1f сек", self.__class__.__name__, self._recorder.get_duration_sec())
+        return wav_data
+
+    def get_recording_duration(self) -> float:
+        """Длительность текущей записи в секундах."""
+        return self._recorder.get_duration_sec()
 
     # ── Методы для переопределения в наследниках ───────────────────────────
 

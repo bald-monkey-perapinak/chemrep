@@ -1,18 +1,17 @@
 """
 RAG Retriever — поиск релевантных материалов из базы знаний по вопросу ученика.
 
-Стратегия поиска (без векторной БД, только SQL):
-  1. TF-IDF-подобный keyword match по полям topic.keywords, topic.name, topic.description
-  2. Полнотекстовый поиск по extracted_text файлов (если текст уже извлечён)
-  3. Ограничение scope: только топики текущего урока и его раздела / класса
+Стратегия поиска:
+  1. pgvector: семантический поиск по эмбеддингам (cosine similarity)
+  2. Keyword match (fallback если pgvector недоступен)
+  3. Полнотекстовый поиск по extracted_text файлов
 
 Результат — список фрагментов текста (chunks), которые передаются в контекст LLM.
-
-Будущее улучшение: заменить keyword match на pgvector + эмбеддинги.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import sys
@@ -39,7 +38,7 @@ MAX_CHUNK_LEN = 800
 
 @dataclass
 class RetrievedChunk:
-    source: str       # откуда взят чанк: "topic_script" | "file_text" | "topic_meta"
+    source: str       # откуда взят чанк: "topic_script" | "file_text" | "topic_meta" | "embedding"
     title: str        # название топика или файла
     text: str         # фрагмент текста
     score: float      # релевантность (0–1, выше — лучше)
@@ -63,6 +62,22 @@ class RAGRetriever:
         self._teacher_id = teacher_id
         self._max_chunks = max_chunks
         self._topic: Optional[KnowledgeTopic] = None
+        self._use_embeddings = self._check_embeddings_available()
+
+    def _check_embeddings_available(self) -> bool:
+        """Проверить, доступен ли pgvector и есть ли эмбеддинги."""
+        try:
+            from sqlalchemy import text
+            result = self._db.execute(text(
+                "SELECT COUNT(*) FROM content_embeddings WHERE teacher_id = :tid AND embedding IS NOT NULL"
+            ), {"tid": str(self._teacher_id)})
+            count = result.scalar()
+            if count and count > 0:
+                logger.debug("[RAG] Найдено %d эмбеддингов, используем pgvector", count)
+                return True
+        except Exception:
+            pass
+        return False
 
     def _get_topic(self):
         if self._topic is None:
@@ -80,17 +95,20 @@ class RAGRetriever:
         if not query.strip():
             return []
 
-        keywords = _extract_keywords(query)
         chunks: list[RetrievedChunk] = []
 
-        # 1. Текущая тема — сценарий урока
-        chunks.extend(self._search_current_topic(keywords))
+        # 1. Семантический поиск через pgvector (если доступен)
+        if self._use_embeddings:
+            chunks.extend(self._search_embeddings(query))
 
-        # 2. Файлы текущей темы с извлечённым текстом
+        # 2. Keyword search (fallback + дополнение)
+        keywords = _extract_keywords(query)
+        chunks.extend(self._search_current_topic(keywords))
         chunks.extend(self._search_topic_files(self._topic_id, keywords))
 
-        # 3. Смежные темы из того же раздела
-        chunks.extend(self._search_sibling_topics(keywords))
+        # 3. Смежные темы
+        if not self._use_embeddings:
+            chunks.extend(self._search_sibling_topics(keywords))
 
         # Дедупликация + сортировка по score
         seen: set[str] = set()
@@ -103,10 +121,55 @@ class RAGRetriever:
 
         result = unique[: self._max_chunks]
         logger.debug(
-            "[RAG] query=%r → %d чанков (из %d кандидатов)",
-            query[:50], len(result), len(chunks),
+            "[RAG] query=%r → %d чанков (из %d кандидатов, embeddings=%s)",
+            query[:50], len(result), len(chunks), self._use_embeddings,
         )
         return result
+
+    # ── pgvector поиск ────────────────────────────────────────────────────
+
+    def _search_embeddings(self, query: str) -> list[RetrievedChunk]:
+        """Семантический поиск через pgvector."""
+        try:
+            from src.utils.embeddings import generate_embedding
+            from sqlalchemy import text
+
+            query_emb = generate_embedding(query)
+            if query_emb is None:
+                return []
+
+            sql = text("""
+                SELECT chunk_text, source_type, source_id, topic_id,
+                       1 - (embedding <=> :q::vector) AS similarity
+                FROM content_embeddings
+                WHERE teacher_id = :tid
+                  AND embedding IS NOT NULL
+                  AND (topic_id = :topic_id OR topic_id IS NULL)
+                ORDER BY embedding <=> :q::vector
+                LIMIT :limit
+            """)
+            result = self._db.execute(sql, {
+                "q": str(query_emb),
+                "tid": str(self._teacher_id),
+                "topic_id": str(self._topic_id),
+                "limit": self._max_chunks,
+            })
+
+            chunks = []
+            for row in result:
+                sim = float(row.similarity)
+                if sim < 0.3:  # порог релевантности
+                    continue
+                chunks.append(RetrievedChunk(
+                    source=f"embedding:{row.source_type}",
+                    title=f"embeddings ({row.source_type})",
+                    text=row.chunk_text[:MAX_CHUNK_LEN],
+                    score=min(sim * 1.3, 1.0),  # слегка увеличиваем вес
+                ))
+            return chunks
+        except Exception as e:
+            logger.debug("[RAG] pgvector поиск не удался: %s", e)
+            return []
 
     def get_topic_context(self) -> str:
         """
@@ -123,7 +186,6 @@ class RAGRetriever:
         if topic.keywords:
             parts.append(f"Ключевые слова: {topic.keywords}")
 
-        # Добавить первые несколько шагов сценария как краткое содержание
         script = topic.lesson_script or []
         if script:
             summary_steps = [s.get("text", "") for s in script[:3] if s.get("text")]
@@ -132,7 +194,7 @@ class RAGRetriever:
 
         return "\n".join(parts)
 
-    # ── Поиск по текущей теме ──────────────────────────────────────────────
+    # ── Keyword поиск (fallback) ──────────────────────────────────────────
 
     def _search_current_topic(self, keywords: list[str]) -> list[RetrievedChunk]:
         topic = self._get_topic()
@@ -141,7 +203,6 @@ class RAGRetriever:
 
         chunks = []
 
-        # Мета-информация темы
         meta_text = " ".join(filter(None, [topic.name, topic.description, topic.keywords]))
         score = _keyword_score(meta_text, keywords)
         if score > 0:
@@ -149,26 +210,23 @@ class RAGRetriever:
                 source="topic_meta",
                 title=topic.name,
                 text=_truncate(meta_text, MAX_CHUNK_LEN),
-                score=score * 0.5,  # мета весит меньше реального контента
+                score=score * 0.5,
             ))
 
-        # Шаги сценария
         for step in (topic.lesson_script or []):
-            text = step.get("text", "")
-            if not text:
+            text_val = step.get("text", "")
+            if not text_val:
                 continue
-            score = _keyword_score(text, keywords)
+            score = _keyword_score(text_val, keywords)
             if score > 0:
                 chunks.append(RetrievedChunk(
                     source="topic_script",
                     title=f"{topic.name} — шаг {step.get('step', '?')}",
-                    text=_truncate(text, MAX_CHUNK_LEN),
+                    text=_truncate(text_val, MAX_CHUNK_LEN),
                     score=score,
                 ))
 
         return chunks
-
-    # ── Поиск по файлам темы ───────────────────────────────────────────────
 
     def _search_topic_files(self, topic_id: UUID, keywords: list[str]) -> list[RetrievedChunk]:
         from src.models.knowledge import TopicFile
@@ -185,20 +243,17 @@ class RAGRetriever:
         chunks = []
         for f in files:
             text = f.extracted_text or ""
-            # Нарезаем на чанки, ищем по каждому
-            for chunk_text in _split_into_chunks(text, MAX_CHUNK_LEN):
-                score = _keyword_score(chunk_text, keywords)
+            for chunk_text_val in _split_into_chunks(text, MAX_CHUNK_LEN):
+                score = _keyword_score(chunk_text_val, keywords)
                 if score > 0:
                     chunks.append(RetrievedChunk(
                         source="file_text",
                         title=f.original_name,
-                        text=chunk_text,
-                        score=score * 1.2,  # файлы с реальным текстом весят больше
+                        text=chunk_text_val,
+                        score=score * 1.2,
                     ))
 
         return chunks
-
-    # ── Поиск по смежным темам ────────────────────────────────────────────
 
     def _search_sibling_topics(self, keywords: list[str]) -> list[RetrievedChunk]:
         topic = self._get_topic()
@@ -221,12 +276,12 @@ class RAGRetriever:
         for t in siblings:
             meta = " ".join(filter(None, [t.name, t.description, t.keywords]))
             score = _keyword_score(meta, keywords)
-            if score > 0.3:  # порог выше — смежные темы берём только при явном совпадении
+            if score > 0.3:
                 chunks.append(RetrievedChunk(
                     source="topic_meta",
                     title=t.name,
                     text=_truncate(meta, MAX_CHUNK_LEN),
-                    score=score * 0.4,  # смежные темы весят меньше
+                    score=score * 0.4,
                 ))
 
         return chunks
@@ -268,7 +323,7 @@ def _split_into_chunks(text: str, chunk_size: int) -> list[str]:
     """Разбить длинный текст на перекрывающиеся чанки."""
     words = text.split()
     result = []
-    step = chunk_size // 5   # шаг в символах между чанками (overlap ~20%)
+    step = chunk_size // 5
     start = 0
     while start < len(text):
         chunk = text[start: start + chunk_size]

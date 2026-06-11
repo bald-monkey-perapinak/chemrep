@@ -29,7 +29,6 @@ export function useSSE(lessonId) {
 
     const url = `${BASE}/sse/lessons/${lessonId}?token=${encodeURIComponent(token)}`
 
-    setStatus('connecting')
     const es = new EventSource(url)
     esRef.current = es
 

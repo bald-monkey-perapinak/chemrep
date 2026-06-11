@@ -1,15 +1,16 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useStore } from './store/useStore'
-import { useEffect } from 'react'
 import Dashboard from './components/Dashboard/Dashboard'
 import Calendar from './components/Calendar/Calendar'
 import Lessons from './components/Lessons/Lessons'
 import KnowledgeBase from './components/KnowledgeBase/KnowledgeBase'
 import Students from './components/Students/Students'
 import Settings from './pages/Settings'
+import LoginPage from './pages/LoginPage'
 import NewLessonModal from './components/shared/NewLessonModal'
 import LessonMonitor from './components/shared/LessonMonitor'
 import Toast from './components/shared/Toast'
+import { api } from './utils/api'
 
 const SECTIONS = [
   { id: 'dashboard', label: 'Обзор',       icon: 'ti-layout-dashboard' },
@@ -24,9 +25,19 @@ export default function App() {
   const activeSection    = useStore(s => s.activeSection)
   const setActiveSection = useStore(s => s.setActiveSection)
 
+  const [loggedIn, setLoggedIn]     = useState(!!localStorage.getItem('token'))
+  const [authChecking, setAuthChecking] = useState(!!localStorage.getItem('token'))
   const [lessonModalOpen, setLessonModalOpen] = useState(false)
   const [lessonModalDate, setLessonModalDate] = useState(null)
   const [monitorLessonId, setMonitorLessonId] = useState(null)
+
+  useEffect(() => {
+    if (!localStorage.getItem('token')) return
+    api.me()
+      .then(() => setLoggedIn(true))
+      .catch(() => { localStorage.removeItem('token'); setLoggedIn(false) })
+      .finally(() => setAuthChecking(false))
+  }, [])
 
   useEffect(() => { window.__openMonitor = setMonitorLessonId }, [setMonitorLessonId])
 
@@ -34,6 +45,9 @@ export default function App() {
     setLessonModalDate(date || null)
     setLessonModalOpen(true)
   }
+
+  if (authChecking) return null
+  if (!loggedIn) return <LoginPage onLogin={() => setLoggedIn(true)} />
 
   const sectionTitle = SECTIONS.find(s => s.id === activeSection)?.label || ''
 
@@ -54,7 +68,10 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-footer">
-          Иванова А.П.
+          <button className="link-btn" style={{ fontSize: 12 }}
+            onClick={() => { api.logout(); setLoggedIn(false) }}>
+            Выйти
+          </button>
         </div>
       </aside>
 

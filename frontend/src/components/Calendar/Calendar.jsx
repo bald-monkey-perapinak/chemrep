@@ -57,7 +57,7 @@ export default function Calendar({ onOpenNewLesson }) {
         {cells.map((c, i) => {
           const ds = `${year}-${String(c.month + 1).padStart(2, '0')}-${String(c.d).padStart(2, '0')}`
           const isToday = ds === todayStr && !c.other
-          const dayLessons = lessons.filter((l) => l.date === ds)
+          const dayLessons = lessons.filter((l) => l.scheduled_at?.slice(0, 10) === ds)
           return (
             <div
               key={i}
@@ -66,8 +66,8 @@ export default function Calendar({ onOpenNewLesson }) {
             >
               <div className="day-num">{c.d}</div>
               {dayLessons.map((l) => (
-                <div key={l.id} className={`day-event ${l.platform}`}>
-                  {l.time} {l.student.split(' ')[0]}
+                <div key={l.id} className={`day-event ${l.vcs_platform}`}>
+                  {new Date(l.scheduled_at).getHours().toString().padStart(2,'0')}:{new Date(l.scheduled_at).getMinutes().toString().padStart(2,'0')} {(l.student_name || '—').split(' ')[0]}
                 </div>
               ))}
             </div>

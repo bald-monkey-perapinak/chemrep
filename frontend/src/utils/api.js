@@ -34,9 +34,28 @@ async function request(method, path, body) {
 
 export const api = {
   // ── Auth ────────────────────────────────────────────────────────────────
-  login:    (email, password) =>
-    request('POST', '/auth/login', { username: email, password })
-      .then(d => { localStorage.setItem('token', d.access_token); return d }),
+  login:    async (email, password) => {
+    const token = getToken()
+    const formBody = new URLSearchParams({ username: email, password }).toString()
+    const res = await fetch(`${BASE}/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formBody,
+    })
+    if (res.status === 401) {
+      throw new Error('Неверный email или пароль')
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }))
+      throw new Error(err.detail || 'Ошибка сервера')
+    }
+    const d = await res.json()
+    localStorage.setItem('token', d.access_token)
+    return d
+  },
   register: (email, password, full_name) =>
     request('POST', '/auth/register', { email, password, full_name }),
   me:       ()                => request('GET',  '/auth/me'),

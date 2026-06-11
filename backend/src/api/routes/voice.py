@@ -27,6 +27,8 @@ ALLOWED_AUDIO   = {"audio/mpeg", "audio/wav", "audio/x-wav", "audio/mp4", "audio
 
 
 class VoiceStatus(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     has_clone:    bool
     voice_id:     Optional[str]
     voice_name:   Optional[str]

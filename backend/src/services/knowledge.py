@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import logging
 import mimetypes
 import os
 import uuid
@@ -21,6 +22,10 @@ from src.api.schemas.knowledge import (
     SectionCreate, SectionUpdate,
     TopicCreate, TopicUpdate,
 )
+from src.utils.text_extractor import extract_text
+from src.utils.s3 import upload_bytes, delete_object, S3_BUCKET
+
+logger = logging.getLogger(__name__)
 
 
 # ─── Вспомогательные функции ───────────────────────────────────────────────
@@ -252,9 +257,8 @@ async def upload_files(
     file_role: str = "material",
 ) -> tuple[list[TopicFile], list[str]]:
     """
-    Загружает файлы в тему. Возвращает (загруженные, пропущенные).
-    В реальном проекте здесь будет загрузка в S3.
-    Пока сохраняем метаданные, путь эмулируем.
+    Загружает файлы в тему: реальная загрузка в S3 + извлечение текста.
+    Возвращает (загруженные, пропущенные).
     """
     topic = _get_topic_or_404(db, topic_id, teacher_id)
 
@@ -284,10 +288,31 @@ async def upload_files(
                 detail=f"Тип файла не поддерживается: {mime}",
             )
 
-        # Эмулируем путь в S3 (заменить на реальную загрузку)
+        # Генерируем путь в S3
         file_uuid = uuid.uuid4()
         ext = os.path.splitext(upload.filename or "")[1]
-        storage_path = f"s3://chemrep/topics/{topic_id}/{file_uuid}{ext}"
+        storage_path = f"topics/{topic_id}/{file_uuid}{ext}"
+
+        # Реальная загрузка в S3
+        try:
+            upload_bytes(content, storage_path, content_type=mime)
+        except Exception as e:
+            logger.error("[Knowledge] Ошибка загрузки в S3: %s", e)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Ошибка загрузки файла в хранилище: {e}",
+            )
+
+        # Извлечение текста для RAG
+        extracted_text = None
+        text_extracted = False
+        try:
+            extracted_text = extract_text(content, upload.filename or "")
+            text_extracted = extracted_text is not None
+            if text_extracted:
+                logger.info("[Knowledge] Извлечён текст из %s (%d символов)", upload.filename, len(extracted_text))
+        except Exception as e:
+            logger.warning("[Knowledge] Не удалось извлечь текст из %s: %s", upload.filename, e)
 
         db_file = TopicFile(
             topic_id=topic_id,
@@ -296,10 +321,20 @@ async def upload_files(
             mime_type=mime,
             size_bytes=size,
             file_role=file_role,
+            extracted_text=extracted_text,
+            text_extracted=text_extracted,
         )
         db.add(db_file)
         uploaded.append(db_file)
         existing_names.add(upload.filename)
+
+        # Индексация эмбеддингов для RAG
+        if text_extracted and extracted_text:
+            try:
+                from src.services.embeddings import index_topic_file
+                index_topic_file(db, db_file, extracted_text, teacher_id)
+            except Exception as e:
+                logger.warning("[Knowledge] Не удалось проиндексировать эмбеддинги: %s", e)
 
     db.commit()
     for f in uploaded:
@@ -310,7 +345,17 @@ async def upload_files(
 
 def delete_file(db: Session, file_id: UUID, teacher_id: UUID) -> None:
     obj = _get_file_or_404(db, file_id, teacher_id)
-    # В реальном проекте: удалить из S3 по obj.storage_path
+    # Удаляем из S3
+    try:
+        delete_object(obj.storage_path)
+    except Exception as e:
+        logger.warning("[Knowledge] Не удалось удалить файл из S3: %s", e)
+    # Удаляем эмбеддинги
+    try:
+        from src.services.embeddings import delete_embeddings_for_source
+        delete_embeddings_for_source(db, "topic_file", file_id)
+    except Exception:
+        pass
     db.delete(obj)
     db.commit()
 

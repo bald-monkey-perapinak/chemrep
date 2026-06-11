@@ -8,7 +8,7 @@ const initialLessons = [
 
 const initialStudents = [
   { id: '1', full_name: 'Петров Михаил', email: 'petrov@mail.ru', grade: 10 },
-  { id: '2', student_name: 'Сидорова Анна', email: 'sidorova@mail.ru', grade: 9 },
+  { id: '2', full_name: 'Сидорова Анна', email: 'sidorova@mail.ru', grade: 9 },
 ]
 
 const initialKbTree = [

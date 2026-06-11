@@ -44,15 +44,14 @@ class LoginResponse(BaseModel):
     token_type:   str = "bearer"
 
 class TeacherOut(BaseModel):
+    model_config = {"from_attributes": True, "protected_namespaces": ()}
+
     id:                    str
     email:                 str
     full_name:             str
     subject:               str
     default_vcs_platform:  str
     voice_model_ready:     bool
-
-    class Config:
-        from_attributes = True
 
 class ProfileUpdate(BaseModel):
     full_name:             Optional[str] = None

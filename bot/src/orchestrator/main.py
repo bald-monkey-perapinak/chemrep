@@ -16,6 +16,12 @@ import signal
 import sys
 import os
 
+# Загружаем .env из корня проекта
+from dotenv import load_dotenv
+_env_path = os.path.join(os.path.dirname(__file__), "..", "..", "..", ".env")
+if os.path.exists(_env_path):
+    load_dotenv(_env_path)
+
 # Добавляем пути
 _bot_root = os.path.join(os.path.dirname(__file__), "..", "..")
 _backend_root = os.path.join(_bot_root, "..", "backend")

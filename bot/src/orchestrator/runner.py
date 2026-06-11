@@ -177,6 +177,10 @@ class LessonRunner:
         self.session.status        = SessionStatus.ACTIVE
         self.session.bot_joined_at = datetime.now(timezone.utc)
         self.db.commit()
+
+        # Начинаем запись аудио
+        self._vcs.start_recording()
+
         self._log_event("bot_joined", {"link": lesson.vcs_link})
         self._publish('bot_joined', {'link': lesson.vcs_link, 'session_status': 'active'})
 
@@ -365,6 +369,15 @@ class LessonRunner:
     async def _cleanup(self) -> None:
         now = datetime.now(timezone.utc)
 
+        # Останавливаем запись аудио и сохраняем в S3
+        if self._vcs and self._vcs.connected:
+            try:
+                wav_data = self._vcs.stop_recording()
+                if wav_data and len(wav_data) > 1000:  # минимум 1KB
+                    await self._save_recording(wav_data)
+            except Exception as e:
+                logger.warning("[runner %s] Ошибка сохранения записи: %s", self.lesson.id, e)
+
         if self._vcs and self._vcs.connected:
             try:
                 await self._vcs.disconnect()
@@ -451,3 +464,23 @@ class LessonRunner:
             self.db.commit()
         except Exception:
             pass
+
+    async def _save_recording(self, wav_data: bytes) -> None:
+        """Сохранить запись аудио урока в S3."""
+        try:
+            import sys as _sys, os as _os
+            _sys.path.insert(0, _os.path.abspath(_os.path.join(
+                _os.path.dirname(__file__), '..', '..', '..', 'backend')))
+            from src.utils.s3 import upload_bytes
+
+            lesson_id = str(self.lesson.id)
+            key = f"recordings/{lesson_id}/lesson.wav"
+            upload_bytes(wav_data, key, content_type="audio/wav")
+
+            # Сохраняем путь в модели урока
+            self.lesson.recording_path = key
+            self.db.commit()
+            logger.info("[runner %s] Запись сохранена в S3: %s (%.1f сек)",
+                        self.lesson.id, key, len(wav_data) / 32000)
+        except Exception as e:
+            logger.error("[runner %s] Ошибка сохранения записи в S3: %s", self.lesson.id, e)

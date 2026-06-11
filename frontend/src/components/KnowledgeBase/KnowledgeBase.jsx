@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { useStore } from '../../store/useStore'
-import { formatSize } from '../../utils/helpers'
 import KbTree from './KbTree'
 import KbDetail from './KbDetail'
 import { CreateNodeModal, RenameNodeModal, DeleteNodeModal } from './FolderModals'
@@ -22,12 +21,7 @@ export default function KnowledgeBase() {
     input.type = 'file'
     input.multiple = true
     input.onchange = () => {
-      const files = Array.from(input.files).map((f) => ({
-        name: f.name,
-        size: formatSize(f.size),
-        date: new Date().toLocaleDateString('ru'),
-      }))
-      addFiles(selectedKbNode, files)
+      addFiles(selectedKbNode, Array.from(input.files))
     }
     input.click()
   }

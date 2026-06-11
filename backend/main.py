@@ -27,14 +27,7 @@ from src.api.routes.sse        import router as sse_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: создание S3 bucket
-    try:
-        from src.utils.s3 import ensure_bucket
-        ensure_bucket()
-    except Exception as e:
-        logging.getLogger(__name__).warning("Не удалось инициализировать S3: %s", e)
     yield
-    # Shutdown: cleanup если нужен
 
 
 app = FastAPI(

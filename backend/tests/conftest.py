@@ -9,7 +9,7 @@ import uuid
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import create_engine, String, Text
+from sqlalchemy import create_engine, String, Text, TypeDecorator
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -21,18 +21,30 @@ import src.models  # noqa: F401 — register all models
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID, JSONB
 
 
+class _SqliteUUID(TypeDecorator):
+    impl = String(36)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if isinstance(value, uuid.UUID):
+            return str(value)
+        return value
+
+    def process_result_value(self, value, dialect):
+        return value
+
+
 def _adapt_types_for_sqlite():
     for table in Base.metadata.tables.values():
         for col in table.columns:
             if isinstance(col.type, PG_UUID):
-                col.type = String(36)
+                col.type = _SqliteUUID()
             elif isinstance(col.type, JSONB):
                 col.type = Text()
 
 
 _adapt_types_for_sqlite()
 
-import sqlite3
 sqlite3.register_adapter(uuid.UUID, lambda u: str(u))
 
 engine = create_engine(

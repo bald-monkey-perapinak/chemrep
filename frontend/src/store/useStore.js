@@ -238,9 +238,12 @@ export const useStore = create((set, get) => ({
 
   // ── Toast ─────────────────────────────────────────────────────────────
   toast: null,
+  _showToastTimer: null,
   showToast: (msg) => {
-    set({ toast: msg })
-    setTimeout(() => set({ toast: null }), 2500)
+    const prev = get()._showToastTimer
+    if (prev) clearTimeout(prev)
+    const timer = setTimeout(() => set({ toast: null, _showToastTimer: null }), 2500)
+    set({ toast: msg, _showToastTimer: timer })
   },
 }))
 

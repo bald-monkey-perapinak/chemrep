@@ -1,4 +1,5 @@
 import { useStore } from '../../store/useStore'
+import { fmtDt } from '../../utils/helpers'
 
 const STATUS = {
   scheduled:   { cls: 'badge-upcoming', label: 'Запланировано' },
@@ -8,17 +9,15 @@ const STATUS = {
   missed:      { cls: 'badge-ya',       label: 'Пропущено' },
 }
 
-function fmtDt(iso) {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  const mo = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек']
-  return `${d.getDate()} ${mo[d.getMonth()]}, ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
-}
-
 export default function Lessons() {
   const lessons       = useStore(s => s.lessons)
   const deleteLesson  = useStore(s => s.deleteLesson)
   const showToast     = useStore(s => s.showToast)
+  const lessonsLoading = useStore(s => s.lessonsLoading)
+
+  if (lessonsLoading) {
+    return <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>Загрузка занятий...</div>
+  }
 
   const sorted = [...lessons].sort((a, b) => a.scheduled_at > b.scheduled_at ? -1 : 1)
 

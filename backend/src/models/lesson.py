@@ -4,7 +4,7 @@
 с привязкой к теме из базы знаний.
 """
 
-from sqlalchemy import Column, String, DateTime, ForeignKey, Enum, Text, Boolean
+from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Enum, Text, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -39,6 +39,7 @@ class Lesson(Base):
 
     # Время
     scheduled_at = Column(DateTime(timezone=True), nullable=False)
+    duration_min = Column(Integer, default=60)  # длительность в минутах
     started_at = Column(DateTime(timezone=True), nullable=True)
     finished_at = Column(DateTime(timezone=True), nullable=True)
 

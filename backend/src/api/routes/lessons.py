@@ -34,7 +34,8 @@ class LessonCreate(BaseModel):
     student_id:   Optional[str]  = None
     topic_id:     Optional[str]  = None
     scheduled_at: datetime
-    vcs_platform: str            = "zoom"
+    duration_min: int             = 60
+    vcs_platform: str             = "zoom"
     vcs_link:     Optional[str]  = None
     notes:        Optional[str]  = None
 
@@ -77,6 +78,7 @@ class LessonOut(BaseModel):
     topic_id:       Optional[str]
     topic_name:     Optional[str]
     scheduled_at:   str
+    duration_min:   int
     started_at:     Optional[str]
     finished_at:    Optional[str]
     vcs_platform:   str
@@ -141,6 +143,7 @@ def _lesson_out(l: Lesson) -> LessonOut:
         topic_id=str(l.topic_id) if l.topic_id else None,
         topic_name=l.topic.name if l.topic else None,
         scheduled_at=l.scheduled_at.isoformat(),
+        duration_min=l.duration_min or 60,
         started_at=l.started_at.isoformat() if l.started_at else None,
         finished_at=l.finished_at.isoformat() if l.finished_at else None,
         vcs_platform=l.vcs_platform.value,
@@ -205,6 +208,7 @@ def create_lesson(
         student_id=data.student_id,
         topic_id=data.topic_id,
         scheduled_at=data.scheduled_at,
+        duration_min=data.duration_min,
         vcs_platform=platform,
         vcs_link=data.vcs_link,
         notes=data.notes,

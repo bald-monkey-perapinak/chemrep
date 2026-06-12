@@ -68,6 +68,13 @@ class StudentDetail(StudentOut):
 
 # ── Вспомогательная ───────────────────────────────────────────────────────
 
+def _student_out(s: Student) -> StudentOut:
+    return StudentOut(
+        id=str(s.id), full_name=s.full_name, email=s.email,
+        phone=s.phone, grade=s.grade, notes=s.notes, is_active=s.is_active,
+    )
+
+
 def _get_or_404(db: Session, student_id: UUID, teacher: Teacher) -> Student:
     s = db.query(Student).filter(
         Student.id == student_id,
@@ -89,7 +96,7 @@ def list_students(
     q = db.query(Student).filter(Student.teacher_id == teacher.id)
     if active_only:
         q = q.filter(Student.is_active == True)  # noqa: E712
-    return q.order_by(Student.full_name).all()
+    return [_student_out(s) for s in q.order_by(Student.full_name).all()]
 
 
 @router.post("", response_model=StudentOut, status_code=201,
@@ -103,7 +110,7 @@ def create_student(
     db.add(student)
     db.commit()
     db.refresh(student)
-    return student
+    return _student_out(student)
 
 
 @router.get("/{student_id}", response_model=StudentDetail,
@@ -116,6 +123,7 @@ def get_student(
     student = _get_or_404(db, student_id, teacher)
     lessons = (
         db.query(Lesson)
+        .options(joinedload(Lesson.topic))
         .filter(Lesson.student_id == student_id)
         .order_by(Lesson.scheduled_at.desc())
         .limit(20)
@@ -156,7 +164,7 @@ def update_student(
         setattr(student, field, value)
     db.commit()
     db.refresh(student)
-    return student
+    return _student_out(student)
 
 
 @router.delete("/{student_id}", status_code=204,

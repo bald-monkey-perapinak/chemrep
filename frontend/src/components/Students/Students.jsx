@@ -7,6 +7,11 @@ export default function Students() {
   const addStudent     = useStore(s => s.addStudent)
   const deleteStudent  = useStore(s => s.deleteStudent)
   const showToast      = useStore(s => s.showToast)
+  const studentsLoading = useStore(s => s.studentsLoading)
+
+  if (studentsLoading) {
+    return <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>Загрузка учеников...</div>
+  }
 
   const [open, setOpen]     = useState(false)
   const [name, setName]     = useState('')

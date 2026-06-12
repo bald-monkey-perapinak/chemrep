@@ -10,6 +10,7 @@ import LoginPage from './pages/LoginPage'
 import NewLessonModal from './components/shared/NewLessonModal'
 import LessonMonitor from './components/shared/LessonMonitor'
 import Toast from './components/shared/Toast'
+import ErrorBoundary from './components/shared/ErrorBoundary'
 import { api } from './utils/api'
 
 const SECTIONS = [
@@ -51,6 +52,12 @@ export default function App() {
   }, [loggedIn])
 
   useEffect(() => { window.__openMonitor = setMonitorLessonId }, [setMonitorLessonId])
+
+  useEffect(() => {
+    const handleLogout = () => setLoggedIn(false)
+    window.addEventListener('auth:logout', handleLogout)
+    return () => window.removeEventListener('auth:logout', handleLogout)
+  }, [])
 
   function openNewLesson(date) {
     setLessonModalDate(date || null)
@@ -96,12 +103,14 @@ export default function App() {
           )}
         </div>
         <div className="content">
-          {activeSection === 'dashboard' && <Dashboard />}
-          {activeSection === 'calendar'  && <Calendar onOpenNewLesson={openNewLesson} />}
-          {activeSection === 'lessons'   && <Lessons />}
-          {activeSection === 'students'  && <Students />}
-          {activeSection === 'knowledge' && <KnowledgeBase />}
-          {activeSection === 'settings'  && <Settings />}
+          <ErrorBoundary>
+            {activeSection === 'dashboard' && <Dashboard />}
+            {activeSection === 'calendar'  && <Calendar onOpenNewLesson={openNewLesson} />}
+            {activeSection === 'lessons'   && <Lessons />}
+            {activeSection === 'students'  && <Students />}
+            {activeSection === 'knowledge' && <KnowledgeBase />}
+            {activeSection === 'settings'  && <Settings />}
+          </ErrorBoundary>
         </div>
       </main>
 

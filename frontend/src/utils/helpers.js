@@ -4,6 +4,13 @@ export function fmtDate(d) {
   return `${parseInt(day)} ${mo[parseInt(m) - 1]}`
 }
 
+export function fmtDt(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  const mo = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек']
+  return `${d.getDate()} ${mo[d.getMonth()]}, ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+}
+
 export function plural(n) {
   if (n % 10 === 1 && n % 100 !== 11) return ''
   if (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20)) return 'а'

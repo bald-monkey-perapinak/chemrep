@@ -1,9 +1,16 @@
 import { useStore } from '../../store/useStore'
+import { fmtDt } from '../../utils/helpers'
 
 export default function Dashboard() {
   const lessons  = useStore(s => s.lessons)
   const students = useStore(s => s.students)
   const kbTree   = useStore(s => s.kbTree)
+  const lessonsLoading  = useStore(s => s.lessonsLoading)
+  const studentsLoading = useStore(s => s.studentsLoading)
+
+  if (lessonsLoading || studentsLoading) {
+    return <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>Загрузка...</div>
+  }
 
   const today = new Date().toISOString().slice(0, 10)
   const todayLessons = lessons.filter(l => l.scheduled_at?.slice(0, 10) === today)
@@ -28,13 +35,6 @@ export default function Dashboard() {
     .filter(l => l.status === 'scheduled' || l.status === 'in_progress')
     .sort((a, b) => a.scheduled_at > b.scheduled_at ? 1 : -1)
     .slice(0, 5)
-
-  function fmtDt(iso) {
-    if (!iso) return '—'
-    const d = new Date(iso)
-    const mo = ['янв','фев','мар','апр','май','июн','июл','авг','сен','окт','ноя','дек']
-    return `${d.getDate()} ${mo[d.getMonth()]}, ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
-  }
 
   const statusBadge = {
     scheduled:   { cls: 'badge-upcoming', label: 'Ожидает' },

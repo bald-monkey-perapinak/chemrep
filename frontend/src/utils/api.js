@@ -19,7 +19,7 @@ async function request(method, path, body) {
 
   if (res.status === 401) {
     localStorage.removeItem('token')
-    window.location.reload()
+    window.dispatchEvent(new CustomEvent('auth:logout'))
     return
   }
 

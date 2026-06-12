@@ -267,6 +267,7 @@ class LessonRunner:
         Слушаем вопросы ученика в течение timeout секунд.
         На каждую распознанную фразу генерируем LLM-ответ и озвучиваем.
         """
+        deadline = asyncio.get_event_loop().time() + timeout
         async for phrase in self._asr.listen(self._vcs, timeout=timeout):
             if not phrase.strip():
                 continue

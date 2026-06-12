@@ -1,6 +1,22 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import Modal from './Modal'
 import { useStore } from '../../store/useStore'
+
+const DURATIONS = [
+  { value: 30,  label: '30 мин' },
+  { value: 45,  label: '45 мин' },
+  { value: 60,  label: '1 час' },
+  { value: 90,  label: '1.5 часа' },
+  { value: 120, label: '2 часа' },
+]
+
+function detectPlatform(link) {
+  if (!link) return 'zoom'
+  const lower = link.toLowerCase()
+  if (lower.includes('zoom.us') || lower.includes('zoom.com')) return 'zoom'
+  if (lower.includes('telemost.yandex') || lower.includes('yandex.ru')) return 'yandex'
+  return 'zoom'
+}
 
 export default function NewLessonModal({ onClose, defaultDate }) {
   const addLesson  = useStore(s => s.addLesson)
@@ -10,19 +26,23 @@ export default function NewLessonModal({ onClose, defaultDate }) {
   const [studentId, setStudentId] = useState('')
   const [date, setDate]           = useState(defaultDate || new Date().toISOString().slice(0, 10))
   const [time, setTime]           = useState('16:00')
-  const [platform, setPlatform]   = useState('zoom')
+  const [duration, setDuration]   = useState(60)
   const [link, setLink]           = useState('')
   const [err, setErr]             = useState('')
 
+  const platform = useMemo(() => detectPlatform(link), [link])
+
   async function save() {
     if (!date || !time) { setErr('Укажите дату и время'); return }
+    if (!link.trim()) { setErr('Укажите ссылку на конференцию'); return }
     const student = students.find(s => s.id === studentId)
     await addLesson({
       student_id:   studentId || null,
       student_name: student?.full_name || null,
       scheduled_at: new Date(`${date}T${time}:00`).toISOString(),
+      duration_min: duration,
       vcs_platform: platform,
-      vcs_link:     link.trim() || null,
+      vcs_link:     link.trim(),
       topic_name:   null,
     })
     showToast('Занятие создано')
@@ -58,19 +78,23 @@ export default function NewLessonModal({ onClose, defaultDate }) {
       </div>
 
       <div className="form-group">
-        <label className="form-label">Платформа</label>
-        <div className="platform-toggle">
-          <button className={`platform-btn${platform === 'zoom' ? ' active' : ''}`}
-            onClick={() => setPlatform('zoom')}>Zoom</button>
-          <button className={`platform-btn${platform === 'yandex' ? ' active' : ''}`}
-            onClick={() => setPlatform('yandex')}>Яндекс Телемост</button>
-        </div>
+        <label className="form-label">Длительность</label>
+        <select className="form-input" value={duration} onChange={e => setDuration(+e.target.value)}>
+          {DURATIONS.map(d => (
+            <option key={d.value} value={d.value}>{d.label}</option>
+          ))}
+        </select>
       </div>
 
       <div className="form-group">
         <label className="form-label">Ссылка на конференцию</label>
         <input className="form-input" value={link} onChange={e => setLink(e.target.value)}
-          placeholder={platform === 'zoom' ? 'https://zoom.us/j/...' : 'https://telemost.yandex.ru/j/...'} />
+          placeholder="https://zoom.us/j/... или https://telemost.yandex.ru/j/..." />
+        {link && (
+          <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>
+            Платформа: <strong>{platform === 'zoom' ? 'Zoom' : 'Яндекс Телемост'}</strong>
+          </div>
+        )}
       </div>
 
       {err && <div className="form-err">{err}</div>}

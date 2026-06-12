@@ -62,8 +62,8 @@ export default function KnowledgeBase() {
           placeholder="Например: 8 класс"
           existingNames={allRootNames}
           onClose={() => setCreateRootOpen(false)}
-          onConfirm={(name) => {
-            addRootFolder(name)
+          onConfirm={async (name) => {
+            await addRootFolder(name)
             setCreateRootOpen(false)
             showToast(`Папка «${name}» создана`)
           }}

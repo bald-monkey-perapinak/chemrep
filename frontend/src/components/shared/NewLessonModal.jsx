@@ -14,10 +14,10 @@ export default function NewLessonModal({ onClose, defaultDate }) {
   const [link, setLink]           = useState('')
   const [err, setErr]             = useState('')
 
-  function save() {
+  async function save() {
     if (!date || !time) { setErr('Укажите дату и время'); return }
     const student = students.find(s => s.id === studentId)
-    addLesson({
+    await addLesson({
       student_id:   studentId || null,
       student_name: student?.full_name || null,
       scheduled_at: new Date(`${date}T${time}:00`).toISOString(),

@@ -22,9 +22,9 @@ export default function Lessons() {
 
   const sorted = [...lessons].sort((a, b) => a.scheduled_at > b.scheduled_at ? -1 : 1)
 
-  function remove(id) {
+  async function remove(id) {
     if (!confirm('Удалить занятие?')) return
-    deleteLesson(id)
+    await deleteLesson(id)
     showToast('Занятие удалено')
   }
 

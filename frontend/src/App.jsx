@@ -24,6 +24,9 @@ const SECTIONS = [
 export default function App() {
   const activeSection    = useStore(s => s.activeSection)
   const setActiveSection = useStore(s => s.setActiveSection)
+  const fetchStudents   = useStore(s => s.fetchStudents)
+  const fetchLessons    = useStore(s => s.fetchLessons)
+  const fetchKbTree     = useStore(s => s.fetchKbTree)
 
   const [loggedIn, setLoggedIn]     = useState(!!localStorage.getItem('token'))
   const [authChecking, setAuthChecking] = useState(!!localStorage.getItem('token'))
@@ -38,6 +41,14 @@ export default function App() {
       .catch(() => { localStorage.removeItem('token'); setLoggedIn(false) })
       .finally(() => setAuthChecking(false))
   }, [])
+
+  useEffect(() => {
+    if (loggedIn) {
+      fetchStudents()
+      fetchLessons()
+      fetchKbTree()
+    }
+  }, [loggedIn])
 
   useEffect(() => { window.__openMonitor = setMonitorLessonId }, [setMonitorLessonId])
 

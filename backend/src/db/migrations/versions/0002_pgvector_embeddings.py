@@ -8,6 +8,7 @@ Create Date: 2026-06-11
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+from pgvector.sqlalchemy import Vector
 
 revision = "0002_pgvector"
 down_revision = "0001_initial"
@@ -27,7 +28,7 @@ def upgrade() -> None:
         sa.Column("source_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("chunk_text", sa.Text(), nullable=False),
         sa.Column("chunk_index", sa.Integer(), server_default="0"),
-        sa.Column("embedding", postgresql.Vector(384), nullable=True),
+        sa.Column("embedding", Vector(384), nullable=True),
         sa.Column("embedding_json", sa.Text(), nullable=True),
         sa.Column("topic_id", postgresql.UUID(as_uuid=True),
                   sa.ForeignKey("knowledge_topics.id", ondelete="CASCADE"), nullable=True),

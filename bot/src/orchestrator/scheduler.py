@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "ba
 
 from sqlalchemy.orm import joinedload
 
-from src.db import get_session
+from src.bot_db import get_session
 from src.models.lesson import Lesson, LessonStatus
 from src.orchestrator.runner import LessonRunner
 from config.settings import config

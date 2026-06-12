@@ -74,8 +74,8 @@ function TreeNode({ node, depth = 0, siblingNames }) {
           placeholder="Название"
           existingNames={childNames}
           onClose={() => setCreateChildOpen(false)}
-          onConfirm={(name) => {
-            addChildNode(node.id, name, 'folder')
+          onConfirm={async (name) => {
+            await addChildNode(node.id, name, 'folder')
             setCreateChildOpen(false)
             showToast(`Папка «${name}» создана`)
           }}
@@ -89,8 +89,8 @@ function TreeNode({ node, depth = 0, siblingNames }) {
           placeholder="Например: Алканы"
           existingNames={childNames}
           onClose={() => setCreateTopicOpen(false)}
-          onConfirm={(name) => {
-            addChildNode(node.id, name, 'topic')
+          onConfirm={async (name) => {
+            await addChildNode(node.id, name, 'topic')
             setCreateTopicOpen(false)
             showToast(`Тема «${name}» создана`)
           }}
@@ -102,8 +102,8 @@ function TreeNode({ node, depth = 0, siblingNames }) {
           currentName={node.name}
           existingNames={siblingNames}
           onClose={() => setRenameOpen(false)}
-          onConfirm={(name) => {
-            renameNode(node.id, name)
+          onConfirm={async (name) => {
+            await renameNode(node.id, name)
             setRenameOpen(false)
             showToast(`Переименовано в «${name}»`)
           }}
@@ -114,8 +114,8 @@ function TreeNode({ node, depth = 0, siblingNames }) {
         <DeleteNodeModal
           name={node.name}
           onClose={() => setDeleteOpen(false)}
-          onConfirm={() => {
-            deleteNode(node.id)
+          onConfirm={async () => {
+            await deleteNode(node.id)
             setDeleteOpen(false)
             showToast(`«${node.name}» удалено`)
           }}

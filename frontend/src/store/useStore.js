@@ -1,104 +1,240 @@
 import { create } from 'zustand'
-
-// Начальные данные для работы без бэкенда
-const initialLessons = [
-  { id: '1', student_name: 'Петров Михаил', scheduled_at: new Date().toISOString(), topic_name: 'Алканы — строение', vcs_platform: 'zoom', vcs_link: 'https://zoom.us/j/123456', status: 'scheduled' },
-  { id: '2', student_name: 'Сидорова Анна', scheduled_at: new Date(Date.now() + 3600000).toISOString(), topic_name: 'Степени окисления', vcs_platform: 'yandex', vcs_link: 'https://telemost.yandex.ru/j/abc', status: 'scheduled' },
-]
-
-const initialStudents = [
-  { id: '1', full_name: 'Петров Михаил', email: 'petrov@mail.ru', grade: 10 },
-  { id: '2', full_name: 'Сидорова Анна', email: 'sidorova@mail.ru', grade: 9 },
-]
-
-const initialKbTree = [
-  {
-    id: 'c10', type: 'folder', name: '10 класс', children: [
-      { id: 'c10-org', type: 'folder', name: 'Органическая химия', children: [
-        { id: 'c10-alk', type: 'topic', name: 'Алканы', files: [
-          { id: 'f1', name: 'Алканы_конспект.pdf', size: '1.5 МБ', date: '01.06.2026' },
-        ]},
-        { id: 'c10-alk2', type: 'topic', name: 'Алкены', files: [] },
-      ]},
-    ],
-  },
-  {
-    id: 'c9', type: 'folder', name: '9 класс', children: [
-      { id: 'c9-r', type: 'folder', name: 'Типы реакций', children: [
-        { id: 'c9-r1', type: 'topic', name: 'Реакции замещения', files: [] },
-      ]},
-    ],
-  },
-]
+import { api } from '../utils/api'
 
 export const useStore = create((set, get) => ({
   // ── Navigation ────────────────────────────────────────────────────────
   activeSection: 'dashboard',
   setActiveSection: (section) => set({ activeSection: section }),
 
+  // ── Auth state ────────────────────────────────────────────────────────
+  isLoggedIn: !!localStorage.getItem('token'),
+  setLoggedIn: (v) => set({ isLoggedIn: v }),
+
   // ── Lessons ───────────────────────────────────────────────────────────
-  lessons: initialLessons,
+  lessons: [],
   lessonsLoading: false,
 
-  addLesson: (data) => {
-    const lesson = { ...data, id: Date.now().toString(), status: 'scheduled' }
-    set(s => ({ lessons: [lesson, ...s.lessons] }))
-    return lesson
+  fetchLessons: async () => {
+    set({ lessonsLoading: true })
+    try {
+      const data = await api.listLessons()
+      set({ lessons: data || [] })
+    } catch { set({ lessons: [] }) }
+    set({ lessonsLoading: false })
   },
 
-  deleteLesson: (id) => set(s => ({ lessons: s.lessons.filter(l => l.id !== id) })),
+  addLesson: async (data) => {
+    try {
+      const lesson = await api.createLesson(data)
+      set(s => ({ lessons: [lesson, ...s.lessons] }))
+      return lesson
+    } catch (e) {
+      get().showToast('Ошибка: ' + e.message)
+    }
+  },
+
+  deleteLesson: async (id) => {
+    try {
+      await api.deleteLesson(id)
+      set(s => ({ lessons: s.lessons.filter(l => l.id !== id) }))
+    } catch (e) {
+      get().showToast('Ошибка: ' + e.message)
+    }
+  },
 
   // ── Students ──────────────────────────────────────────────────────────
-  students: initialStudents,
+  students: [],
   studentsLoading: false,
 
-  addStudent: (data) => {
-    const student = { ...data, id: Date.now().toString(), is_active: true }
-    set(s => ({ students: [student, ...s.students] }))
-    return student
+  fetchStudents: async () => {
+    set({ studentsLoading: true })
+    try {
+      const data = await api.listStudents()
+      set({ students: data || [] })
+    } catch { set({ students: [] }) }
+    set({ studentsLoading: false })
   },
 
-  deleteStudent: (id) => set(s => ({ students: s.students.filter(s => s.id !== id) })),
+  addStudent: async (data) => {
+    try {
+      const student = await api.createStudent(data)
+      set(s => ({ students: [...s.students, student] }))
+      return student
+    } catch (e) {
+      get().showToast('Ошибка: ' + e.message)
+    }
+  },
+
+  deleteStudent: async (id) => {
+    try {
+      await api.deleteStudent(id)
+      set(s => ({ students: s.students.filter(st => st.id !== id) }))
+    } catch (e) {
+      get().showToast('Ошибка: ' + e.message)
+    }
+  },
 
   // ── Knowledge base ────────────────────────────────────────────────────
-  kbTree: initialKbTree,
+  kbTree: [],
   kbLoading: false,
   selectedKbNode: null,
   setSelectedKbNode: (id) => set({ selectedKbNode: id }),
 
-  addRootFolder: (name) => set(s => ({
-    kbTree: [...s.kbTree, { id: 'f_' + Date.now(), type: 'folder', name, children: [] }],
-  })),
-
-  addChildNode: (parentId, name, type) => {
-    const newNode = type === 'topic'
-      ? { id: 'n_' + Date.now(), type: 'topic', name, files: [] }
-      : { id: 'n_' + Date.now(), type: 'folder', name, children: [] }
-    set(s => ({ kbTree: addChild(s.kbTree, parentId, newNode) }))
+  fetchKbTree: async () => {
+    set({ kbLoading: true })
+    try {
+      const classes = await api.listClasses()
+      const tree = await Promise.all(
+        (classes || []).map(async (cls) => {
+          try {
+            const full = await api.getClassTree(cls.id)
+            return {
+              id: full.id,
+              type: 'folder',
+              name: full.name,
+              children: (full.sections || []).map(sec => ({
+                id: sec.id,
+                type: 'folder',
+                name: sec.name,
+                children: (sec.topics || []).map(top => ({
+                  id: top.id,
+                  type: 'topic',
+                  name: top.name,
+                  files: (top.files || []).map(f => ({
+                    id: f.id,
+                    name: f.original_name,
+                    size: f.size_bytes
+                      ? f.size_bytes > 1048576
+                        ? (f.size_bytes / 1048576).toFixed(1) + ' МБ'
+                        : Math.round(f.size_bytes / 1024) + ' КБ'
+                      : '—',
+                    date: f.uploaded_at
+                      ? new Date(f.uploaded_at).toLocaleDateString('ru')
+                      : '—',
+                  })),
+                })),
+              })),
+            }
+          } catch {
+            return { id: cls.id, type: 'folder', name: cls.name, children: [] }
+          }
+        })
+      )
+      set({ kbTree: tree })
+    } catch {
+      set({ kbTree: [] })
+    }
+    set({ kbLoading: false })
   },
 
-  renameNode: (id, name) => set(s => ({
-    kbTree: updateNodeName(s.kbTree, id, name),
-  })),
-
-  deleteNode: (id) => set(s => ({
-    kbTree: removeNode(s.kbTree, id),
-    selectedKbNode: s.selectedKbNode === id ? null : s.selectedKbNode,
-  })),
-
-  addFiles: (topicId, files) => {
-    const newFiles = Array.from(files).map(f => ({
-      id: 'file_' + Date.now() + '_' + f.name,
-      name: f.name,
-      size: f.size > 1048576 ? (f.size / 1048576).toFixed(1) + ' МБ' : Math.round(f.size / 1024) + ' КБ',
-      date: new Date().toLocaleDateString('ru'),
-    }))
-    set(s => ({ kbTree: addFilesToNode(s.kbTree, topicId, newFiles) }))
+  addRootFolder: async (name) => {
+    try {
+      const cls = await api.createClass({ name })
+      set(s => ({ kbTree: [...s.kbTree, { id: cls.id, type: 'folder', name: cls.name, children: [] }] }))
+    } catch (e) {
+      get().showToast('Ошибка: ' + e.message)
+    }
   },
 
-  deleteFile: (topicId, fileId) => set(s => ({
-    kbTree: removeFileFromNode(s.kbTree, topicId, fileId),
-  })),
+  addChildNode: async (parentId, name, type) => {
+    const tree = get().kbTree
+    const parent = findNode(tree, parentId)
+    if (!parent) return
+
+    try {
+      if (parent.type === 'folder' && !parent.children?.some(c => c.type === 'folder')) {
+        const isRoot = tree.some(n => n.id === parentId)
+        if (isRoot) {
+          const sec = await api.createSection(parentId, { name })
+          const newNode = { id: sec.id, type: 'folder', name: sec.name, children: [] }
+          set(s => ({ kbTree: addChild(s.kbTree, parentId, newNode) }))
+        } else {
+          const topic = await api.createTopic(parentId, { name })
+          const newNode = { id: topic.id, type: 'topic', name: topic.name, files: [] }
+          set(s => ({ kbTree: addChild(s.kbTree, parentId, newNode) }))
+        }
+      } else {
+        const isRoot = tree.some(n => n.id === parentId)
+        if (!isRoot) {
+          const topic = await api.createTopic(parentId, { name })
+          const newNode = { id: topic.id, type: 'topic', name: topic.name, files: [] }
+          set(s => ({ kbTree: addChild(s.kbTree, parentId, newNode) }))
+        }
+      }
+    } catch (e) {
+      get().showToast('Ошибка: ' + e.message)
+    }
+  },
+
+  renameNode: async (id, name) => {
+    const tree = get().kbTree
+    const isRoot = tree.some(n => n.id === id)
+    try {
+      if (isRoot) {
+        await api.updateClass(id, { name })
+      } else {
+        const parent = findParent(tree, id)
+        if (parent) {
+          const isGrandRoot = tree.some(n => n.id === parent.id)
+          if (isGrandRoot) {
+            await api.updateSection(id, { name })
+          } else {
+            await api.updateTopic(id, { name })
+          }
+        }
+      }
+      set(s => ({ kbTree: updateNodeName(s.kbTree, id, name) }))
+    } catch (e) {
+      get().showToast('Ошибка: ' + e.message)
+    }
+  },
+
+  deleteNode: async (id) => {
+    const tree = get().kbTree
+    const isRoot = tree.some(n => n.id === id)
+    try {
+      if (isRoot) {
+        await api.deleteClass(id)
+      } else {
+        const parent = findParent(tree, id)
+        if (parent) {
+          const isGrandRoot = tree.some(n => n.id === parent.id)
+          if (isGrandRoot) {
+            await api.deleteSection(id)
+          } else {
+            await api.deleteTopic(id)
+          }
+        }
+      }
+      set(s => ({
+        kbTree: removeNode(s.kbTree, id),
+        selectedKbNode: s.selectedKbNode === id ? null : s.selectedKbNode,
+      }))
+    } catch (e) {
+      get().showToast('Ошибка: ' + e.message)
+    }
+  },
+
+  addFiles: async (topicId, files) => {
+    try {
+      await api.uploadFiles(topicId, files)
+      await get().fetchKbTree()
+      get().showToast('Файлы загружены')
+    } catch (e) {
+      get().showToast('Ошибка: ' + e.message)
+    }
+  },
+
+  deleteFile: async (topicId, fileId) => {
+    try {
+      await api.deleteFile(fileId)
+      set(s => ({
+        kbTree: removeFileFromNode(s.kbTree, topicId, fileId),
+      }))
+    } catch (e) {
+      get().showToast('Ошибка: ' + e.message)
+    }
+  },
 
   // ── Toast ─────────────────────────────────────────────────────────────
   toast: null,
@@ -109,6 +245,28 @@ export const useStore = create((set, get) => ({
 }))
 
 // ── Tree helpers ──────────────────────────────────────────────────────────
+
+function findNode(nodes, id) {
+  for (const n of nodes) {
+    if (n.id === id) return n
+    if (n.children) {
+      const found = findNode(n.children, id)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+function findParent(nodes, childId, parent = null) {
+  for (const n of nodes) {
+    if (n.id === childId) return parent
+    if (n.children) {
+      const found = findParent(n.children, childId, n)
+      if (found) return found
+    }
+  }
+  return null
+}
 
 function updateNodeName(nodes, id, name) {
   return nodes.map(n => {
@@ -128,14 +286,6 @@ function addChild(nodes, parentId, newNode) {
   return nodes.map(n => {
     if (n.id === parentId) return { ...n, children: [...(n.children || []), newNode] }
     if (n.children) return { ...n, children: addChild(n.children, parentId, newNode) }
-    return n
-  })
-}
-
-function addFilesToNode(nodes, topicId, files) {
-  return nodes.map(n => {
-    if (n.id === topicId) return { ...n, files: [...(n.files || []), ...files] }
-    if (n.children) return { ...n, children: addFilesToNode(n.children, topicId, files) }
     return n
   })
 }

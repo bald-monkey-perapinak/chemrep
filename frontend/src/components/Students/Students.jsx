@@ -14,16 +14,16 @@ export default function Students() {
   const [grade, setGrade]   = useState('')
   const [err, setErr]       = useState('')
 
-  function save() {
+  async function save() {
     if (!name.trim()) { setErr('Введите имя'); return }
-    addStudent({ full_name: name.trim(), email: email || null, grade: grade ? +grade : null })
+    await addStudent({ full_name: name.trim(), email: email || null, grade: grade ? +grade : null })
     setOpen(false); setName(''); setEmail(''); setGrade(''); setErr('')
     showToast('Ученик добавлен')
   }
 
-  function remove(id, name) {
+  async function remove(id, name) {
     if (!confirm(`Удалить ученика «${name}»?`)) return
-    deleteStudent(id)
+    await deleteStudent(id)
     showToast('Ученик удалён')
   }
 

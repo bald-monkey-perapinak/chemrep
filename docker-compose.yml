@@ -2,11 +2,12 @@ version: '3.9'
 
 services:
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8000/api
     ports:
       - "3000:3000"
-    environment:
-      - VITE_API_URL=http://localhost:8000
     depends_on:
       backend:
         condition: service_started
@@ -26,7 +27,9 @@ services:
         condition: service_healthy
 
   bot:
-    build: ./bot
+    build:
+      context: .
+      dockerfile: bot/Dockerfile
     environment:
       - DATABASE_URL=postgresql://chemrep:password@postgres:5432/chemrep
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}

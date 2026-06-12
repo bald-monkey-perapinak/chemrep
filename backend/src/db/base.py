@@ -1,6 +1,5 @@
 """
 Базовая конфигурация SQLAlchemy.
-Все модели импортируются здесь, чтобы Alembic видел их при генерации миграций.
 """
 
 from sqlalchemy import create_engine
@@ -28,17 +27,3 @@ def get_db():
         yield db
     finally:
         db.close()
-
-
-# Импортируем все модели, чтобы Alembic их видел
-from src.models.teacher import Teacher          # noqa
-from src.models.student import Student          # noqa
-from src.models.lesson import Lesson            # noqa
-from src.models.knowledge import (              # noqa
-    KnowledgeClass,
-    KnowledgeSection,
-    KnowledgeTopic,
-    TopicFile,
-)
-from src.models.session import LessonSession    # noqa
-from src.models.homework import Homework        # noqa

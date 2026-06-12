@@ -13,7 +13,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt as _bcrypt
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
@@ -28,7 +28,7 @@ SECRET_KEY      = os.getenv("JWT_SECRET", "change-me-in-production-please")
 ALGORITHM       = "HS256"
 TOKEN_EXPIRE_H  = 24 * 7   # 7 дней
 
-pwd_ctx    = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_ctx    = None  # removed, using bcrypt directly
 oauth2     = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 
@@ -62,10 +62,10 @@ class ProfileUpdate(BaseModel):
 # ── Вспомогательные функции ───────────────────────────────────────────────
 
 def _hash(password: str) -> str:
-    return pwd_ctx.hash(password)
+    return _bcrypt.hashpw(password.encode(), _bcrypt.gensalt()).decode()
 
 def _verify(plain: str, hashed: str) -> bool:
-    return pwd_ctx.verify(plain, hashed)
+    return _bcrypt.checkpw(plain.encode(), hashed.encode())
 
 def _make_token(teacher_id: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_H)
@@ -99,6 +99,17 @@ def get_current_teacher(
     return teacher
 
 
+def _teacher_out(t: Teacher) -> TeacherOut:
+    return TeacherOut(
+        id=str(t.id),
+        email=t.email,
+        full_name=t.full_name,
+        subject=t.subject,
+        default_vcs_platform=t.default_vcs_platform,
+        voice_model_ready=t.voice_model_ready,
+    )
+
+
 # ── Эндпоинты ─────────────────────────────────────────────────────────────
 
 @router.post("/register", response_model=TeacherOut, status_code=201,
@@ -114,7 +125,7 @@ def register(data: RegisterRequest, db: Session = Depends(get_db)):
     db.add(teacher)
     db.commit()
     db.refresh(teacher)
-    return teacher
+    return _teacher_out(teacher)
 
 
 @router.post("/login", response_model=LoginResponse,
@@ -133,7 +144,7 @@ def login(
 
 @router.get("/me", response_model=TeacherOut, summary="Профиль текущего преподавателя")
 def me(teacher: Teacher = Depends(get_current_teacher)):
-    return teacher
+    return _teacher_out(teacher)
 
 
 @router.patch("/me", response_model=TeacherOut, summary="Обновить профиль")
@@ -146,4 +157,4 @@ def update_me(
         setattr(teacher, field, value)
     db.commit()
     db.refresh(teacher)
-    return teacher
+    return _teacher_out(teacher)

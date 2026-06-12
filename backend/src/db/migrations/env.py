@@ -12,6 +12,19 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from src.db.base import Base  # noqa
 
+# Импортируем все модели, чтобы Alembic видел их при генерации миграций
+from src.models.teacher import Teacher          # noqa
+from src.models.student import Student          # noqa
+from src.models.lesson import Lesson            # noqa
+from src.models.knowledge import (              # noqa
+    KnowledgeClass,
+    KnowledgeSection,
+    KnowledgeTopic,
+    TopicFile,
+)
+from src.models.session import LessonSession    # noqa
+from src.models.homework import Homework        # noqa
+
 config = context.config
 
 if config.config_file_name is not None:

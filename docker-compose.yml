@@ -1,21 +1,42 @@
 version: '3.9'
 
 services:
+  nginx:
+    build: ./nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - frontend
+      - backend
+      - whiteboard
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+
   frontend:
     build:
       context: ./frontend
       args:
-        VITE_API_URL: http://localhost:8000/api
-    ports:
-      - "3000:3000"
+        VITE_API_URL: /api
+    expose:
+      - "3000"
     depends_on:
       backend:
         condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
 
   backend:
     build: ./backend
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     environment:
       - DATABASE_URL=postgresql://chemrep:password@postgres:5432/chemrep
       - S3_ENDPOINT=http://minio:9000
@@ -25,6 +46,11 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
 
   bot:
     build:
@@ -43,13 +69,23 @@ services:
         condition: service_healthy
       whiteboard:
         condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+          cpus: '1.0'
 
   whiteboard:
     build: ./whiteboard
-    ports:
-      - "3001:3001"
+    expose:
+      - "3001"
     environment:
       - PORT=3001
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
 
   postgres:
     image: pgvector/pgvector:pg16
@@ -66,6 +102,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
 
   minio:
     image: minio/minio
@@ -83,6 +124,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
 
 volumes:
   postgres_data:

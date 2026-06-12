@@ -16,6 +16,7 @@ if os.path.exists(_env_path):
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.middleware.rate_limit import RateLimitMiddleware
 from src.api.routes.auth      import router as auth_router
 from src.api.routes.knowledge  import router as knowledge_router
 from src.api.routes.students   import router as students_router
@@ -39,16 +40,18 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=["http://localhost:3000", "http://localhost:5173", "https://localhost", "https://chemrep.local"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+app.add_middleware(RateLimitMiddleware, max_requests=30, window_seconds=60)
+
 
 @app.get("/health", tags=["system"])
-def health():
-    return {"status": "ok"}
+async def health():
+    return {"status": "ok", "version": "0.1.0"}
 
 
 app.include_router(auth_router,      prefix="/api")

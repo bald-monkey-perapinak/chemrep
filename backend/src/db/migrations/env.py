@@ -21,9 +21,11 @@ from src.models.knowledge import (              # noqa
     KnowledgeSection,
     KnowledgeTopic,
     TopicFile,
+    TopicAsset,
 )
 from src.models.session import LessonSession    # noqa
 from src.models.homework import Homework        # noqa
+from src.models.embedding import ContentEmbedding  # noqa
 
 config = context.config
 

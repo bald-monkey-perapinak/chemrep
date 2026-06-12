@@ -70,7 +70,7 @@ def _send_smtp(
     host     = os.getenv("SMTP_HOST", "smtp.gmail.com")
     port     = int(os.getenv("SMTP_PORT", "465"))
     user     = os.getenv("SMTP_USER", "")
-    password = os.getenv("SMTP_PASSWORD", "")
+    password = os.getenv("SMTP_PASSWORD", "") or os.getenv("SMTP_PASS", "")
 
     if not user or not password:
         raise RuntimeError("SMTP_USER и SMTP_PASSWORD не настроены")

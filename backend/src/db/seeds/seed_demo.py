@@ -60,9 +60,9 @@ def seed():
             keywords="атом молекула вещество элемент",
             estimated_duration_min=40,
             lesson_script=[
-                {"step": 1, "text": "Сегодня мы изучим строение атома. Атом — наименьшая частица химического элемента.", "miro_action": "show_frame_1"},
-                {"step": 2, "text": "Атом состоит из ядра и электронной оболочки. Ядро содержит протоны и нейтроны.", "miro_action": "show_frame_2"},
-                {"step": 3, "text": "Проверочный вопрос: из чего состоит ядро атома?", "miro_action": None},
+                {"step": 1, "text": "Сегодня мы изучим строение атома. Атом — наименьшая частица химического элемента.", "board_commands": [{"type": "show_equation", "equation": "A", "x": 300, "y": 200}]},
+                {"step": 2, "text": "Атом состоит из ядра и электронной оболочки. Ядро содержит протоны и нейтроны.", "board_commands": [{"type": "show_formula", "smiles": "[H]", "label": "Протон", "x": 300, "y": 200}]},
+                {"step": 3, "text": "Проверочный вопрос: из чего состоит ядро атома?", "board_commands": []},
             ]
         )
         db.add(topic_atom); db.flush()
@@ -91,10 +91,10 @@ def seed():
             keywords="алканы углеводороды метан этан пропан гомологи",
             estimated_duration_min=50,
             lesson_script=[
-                {"step": 1, "text": "Алканы — предельные углеводороды с общей формулой CₙH₂ₙ₊₂.", "miro_action": "show_formula"},
-                {"step": 2, "text": "Простейший алкан — метан CH₄. Рассмотрим его строение.", "miro_action": "draw_methane"},
-                {"step": 3, "text": "Гомологический ряд: метан, этан, пропан, бутан...", "miro_action": "show_table"},
-                {"step": 4, "text": "Химические свойства: реакции горения и замещения.", "miro_action": "show_reactions"},
+                {"step": 1, "text": "Алканы — предельные углеводороды с общей формулой CₙH₂ₙ₊₂.", "board_commands": [{"type": "show_equation", "equation": "CnH2n+2", "label": "Общая формула алканов", "x": 200, "y": 150}]},
+                {"step": 2, "text": "Простейший алкан — метан CH₄. Рассмотрим его строение.", "board_commands": [{"type": "show_formula", "smiles": "C", "label": "Метан CH₄", "x": 200, "y": 300}]},
+                {"step": 3, "text": "Гомологический ряд: метан, этан, пропан, бутан...", "board_commands": [{"type": "show_equation", "equation": "CH4, C2H6, C3H8, C4H10", "label": "Гомологический ряд", "x": 200, "y": 150}]},
+                {"step": 4, "text": "Химические свойства: реакции горения и замещения.", "board_commands": [{"type": "show_equation", "equation": "CH4 + 2O2 -> CO2 + 2H2O", "label": "Горение метана", "x": 200, "y": 150}]},
             ]
         )
         topic_alkene = KnowledgeTopic(section_id=sec10_org.id, name="Алкены", keywords="алкены этилен двойная связь", estimated_duration_min=50)

@@ -14,7 +14,7 @@ EventBus — внутришний pub/sub для SSE-событий урока.
   session_started   — бот создал сессию, урок IN_PROGRESS
   bot_joined        — бот вошёл в конференцию
   step_started      — начат новый шаг сценария
-  miro_action       — действие на доске
+  board_action      — действие на доске
   question_asked    — бот задал вопрос ученику
   student_speech    — ученик что-то сказал
   student_question  — ученик задал вопрос (free dialog)

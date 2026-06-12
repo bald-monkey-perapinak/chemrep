@@ -34,12 +34,22 @@ services:
       - DATABASE_URL=postgresql://chemrep:password@postgres:5432/chemrep
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
-      - MIRO_ACCESS_TOKEN=${MIRO_ACCESS_TOKEN}
+      - BOARD_WS_URL=ws://whiteboard:3001
+      - BOARD_STUB_MODE=true
     depends_on:
       backend:
         condition: service_started
       postgres:
         condition: service_healthy
+      whiteboard:
+        condition: service_started
+
+  whiteboard:
+    build: ./whiteboard
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
 
   postgres:
     image: pgvector/pgvector:pg16

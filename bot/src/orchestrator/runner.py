@@ -36,7 +36,7 @@ from src.audio.tts import make_tts, BaseTTS
 from src.audio.asr import make_asr
 from src.dialog.retriever import RAGRetriever
 from src.dialog.engine import make_dialog_engine, BaseDialogEngine
-from src.miro.client import make_miro_client, BaseMiroClient
+from src.board.client import make_board_client, BaseBoardClient
 from src.orchestrator.homework import deliver_homework
 
 # EventBus из backend — публикуем события для SSE
@@ -68,7 +68,7 @@ class LessonRunner:
         self._tts: BaseTTS | None           = None
         self._asr    = None
         self._llm: BaseDialogEngine | None  = None
-        self._miro: BaseMiroClient | None   = None
+        self._board: BaseBoardClient | None = None
         self._dialog: list[dict] = []
         self._events: list[dict] = []
         self._reconnect_count = 0
@@ -82,7 +82,7 @@ class LessonRunner:
             await self._prepare()
             await self._init_audio()
             await self._init_dialog()
-            await self._init_miro()
+            await self._init_board()
             await self._connect_vcs()
             await self._conduct_lesson()
         except asyncio.CancelledError:
@@ -160,12 +160,11 @@ class LessonRunner:
         )
         logger.info("[runner %s] LLM=%s", lesson.id, type(self._llm).__name__)
 
-    async def _init_miro(self) -> None:
-        topic = self.lesson.topic
-        board_id = topic.miro_board_id if topic else None
-        self._miro = make_miro_client(board_id=board_id)
-        logger.info("[runner %s] Miro=%s  board=%s",
-                    self.lesson.id, type(self._miro).__name__, board_id)
+    async def _init_board(self) -> None:
+        session_id = str(self.session.id) if self.session else None
+        self._board = make_board_client(session_id=session_id)
+        logger.info("[runner %s] Board=%s  session=%s",
+                    self.lesson.id, type(self._board).__name__, session_id)
 
     async def _connect_vcs(self) -> None:
         lesson = self.lesson
@@ -214,7 +213,7 @@ class LessonRunner:
             for i, step in enumerate(script):
                 step_text   = step.get("text", "")
                 question    = step.get("question")
-                miro_action = step.get("miro_action")
+                board_commands = step.get("board_commands", [])
                 listen_after = step.get("listen", True)
 
                 self.session.current_step = i + 1
@@ -227,10 +226,11 @@ class LessonRunner:
 
                 logger.info("[runner %s] Шаг %d/%d", lesson.id, i + 1, len(script))
 
-                if miro_action and self._miro:
-                    self._log_event("miro_action", {"action": miro_action, "step": i + 1})
-                    self._publish('miro_action', {'action': miro_action, 'step': i + 1})
-                    await self._miro.execute(miro_action)
+                for cmd in board_commands:
+                    self._log_event("board_action", {"command": cmd, "step": i + 1})
+                    self._publish('board_action', {'command': cmd, 'step': i + 1})
+                    if self._board:
+                        await self._board.execute(cmd)
 
                 if step_text:
                     await self._speak_with_reconnect(step_text)
@@ -493,7 +493,7 @@ class LessonRunner:
             except Exception as e:
                 logger.warning("[runner %s] VCS disconnect: %s", self.lesson.id, e)
 
-        for resource in (self._tts, self._llm, self._miro):
+        for resource in (self._tts, self._llm, self._board):
             if resource:
                 try:
                     await resource.close()

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ХимТьютор — Доска</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script src="https://unpkg.com/katex@0.16.9/dist/contrib/mhchem.min.js"></script>
+  <script src="https://unpkg.com/@rdkit/rdkit/dist/RDKit_minimal.js"></script>
+  <link rel="stylesheet" href="/css/board.css">
+</head>
+<body>
+  <div id="board">
+    <div id="status-bar">
+      <span id="status-dot"></span>
+      <span id="status-text">Подключение...</span>
+    </div>
+    <div id="canvas-container">
+      <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+    <div id="equations-layer"></div>
+    <div id="labels-layer"></div>
+  </div>
+  <script src="/js/formulas.js"></script>
+  <script src="/js/equations.js"></script>
+  <script src="/js/mechanisms.js"></script>
+  <script src="/js/board.js"></script>
+</body>
+</html>

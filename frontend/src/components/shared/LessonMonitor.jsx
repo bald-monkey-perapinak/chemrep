@@ -5,7 +5,7 @@ const KIND_LABELS = {
   session_started:  { icon: 'ti-player-play',    text: 'Урок начат',              color: '#3B6D11' },
   bot_joined:       { icon: 'ti-robot',           text: 'Бот вошёл в конференцию', color: '#185FA5' },
   step_started:     { icon: 'ti-list-numbers',    text: 'Шаг сценария',            color: '#534AB7' },
-  miro_action:      { icon: 'ti-layout-board',    text: 'Действие на доске',       color: '#854F0B' },
+  board_action:     { icon: 'ti-layout-board',    text: 'Действие на доске',       color: '#854F0B' },
   question_asked:   { icon: 'ti-help-circle',     text: 'Вопрос ученику',          color: '#185FA5' },
   student_speech:   { icon: 'ti-message-circle',  text: 'Ученик ответил',          color: '#3B6D11' },
   student_question: { icon: 'ti-question-mark',   text: 'Вопрос от ученика',       color: '#534AB7' },
@@ -74,7 +74,7 @@ export default function LessonMonitor({ lessonId, onClose }) {
   }, [events.length])
 
   const isActive = ['session_started', 'bot_joined', 'step_started',
-                    'miro_action', 'question_asked', 'student_speech',
+                    'board_action', 'question_asked', 'student_speech',
                     'student_question', 'bot_reply'].includes(lastEvent?.kind)
   const isEnded  = ['session_ended', 'session_failed'].includes(lastEvent?.kind)
 

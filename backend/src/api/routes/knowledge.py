@@ -294,3 +294,84 @@ def search(
     teacher: Teacher = Depends(get_current_teacher),
 ):
     return svc.search_topics(db, teacher.id, q, limit)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  Topic Assets (SVG, images for the whiteboard)
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get(
+    "/topics/{topic_id}/assets",
+    summary="Список ассетов темы",
+)
+def list_assets(
+    topic_id: UUID,
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
+    from src.models.knowledge import TopicAsset
+    return db.query(TopicAsset).filter(
+        TopicAsset.topic_id == topic_id,
+    ).order_by(TopicAsset.uploaded_at).all()
+
+
+@router.post(
+    "/topics/{topic_id}/assets",
+    status_code=status.HTTP_201_CREATED,
+    summary="Загрузить ассет (SVG, изображение)",
+)
+async def upload_asset(
+    topic_id: UUID,
+    file: UploadFile = File(...),
+    asset_type: str = Query("svg", description="svg | image | other"),
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
+    import uuid as _uuid, os
+    from src.models.knowledge import TopicAsset
+    from src.utils.s3 import upload_bytes
+
+    content = await file.read()
+    ext = os.path.splitext(file.filename or "")[1]
+    storage_path = f"topics/{topic_id}/assets/{_uuid.uuid4()}{ext}"
+
+    upload_bytes(content, storage_path, content_type=file.content_type or "image/svg+xml")
+
+    asset = TopicAsset(
+        topic_id=topic_id,
+        original_name=file.filename or "unnamed",
+        storage_path=storage_path,
+        mime_type=file.content_type,
+        asset_type=asset_type,
+    )
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    return asset
+
+
+@router.delete(
+    "/assets/{asset_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Удалить ассет",
+)
+def delete_asset(
+    asset_id: UUID,
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
+    from src.models.knowledge import TopicAsset
+    from src.utils.s3 import delete_object
+
+    asset = db.query(TopicAsset).filter(TopicAsset.id == asset_id).first()
+    if not asset:
+        from fastapi import HTTPException
+        raise HTTPException(404, "Ассет не найден")
+
+    try:
+        delete_object(asset.storage_path)
+    except Exception:
+        pass
+
+    db.delete(asset)
+    db.commit()

@@ -6,6 +6,7 @@ from src.models.knowledge import (
     KnowledgeSection,
     KnowledgeTopic,
     TopicFile,
+    TopicAsset,
 )
 from src.models.session import LessonSession
 from src.models.homework import Homework

@@ -48,8 +48,12 @@ class Config:
     elevenlabs_api_key: str = field(
         default_factory=lambda: os.getenv("ELEVENLABS_API_KEY", "")
     )
-    miro_access_token: str = field(
-        default_factory=lambda: os.getenv("MIRO_ACCESS_TOKEN", "")
+    # ── Доска (WebSocket whiteboard) ───────────────────────────────────────
+    board_ws_url: str = field(
+        default_factory=lambda: os.getenv("BOARD_WS_URL", "ws://whiteboard:3001")
+    )
+    board_stub_mode: bool = field(
+        default_factory=lambda: os.getenv("BOARD_STUB_MODE", "false").lower() == "true"
     )
 
     # ── Логирование ────────────────────────────────────────────────────────

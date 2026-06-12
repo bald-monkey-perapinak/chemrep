@@ -70,12 +70,8 @@ class KnowledgeTopic(Base):
     keywords = Column(String(500), nullable=True)       # для поиска через RAG
 
     # Сценарий урока: список шагов в JSON
-    # Пример: [{"step": 1, "text": "Алканы — это...", "miro_action": "show_frame_1"}, ...]
+    # Пример: [{"step": 1, "text": "Алканы — это...", "board_commands": [...]}, ...]
     lesson_script = Column(JSONB, nullable=True)
-
-    # Miro интеграция
-    miro_board_id = Column(String(255), nullable=True)
-    miro_board_url = Column(String(1000), nullable=True)
 
     # Метаданные
     estimated_duration_min = Column(Integer, default=45)  # примерная длительность в минутах
@@ -88,6 +84,7 @@ class KnowledgeTopic(Base):
     # Связи
     section = relationship("KnowledgeSection", back_populates="topics")
     files = relationship("TopicFile", back_populates="topic", cascade="all, delete-orphan")
+    assets = relationship("TopicAsset", back_populates="topic", cascade="all, delete-orphan")
     lessons = relationship("Lesson", back_populates="topic")
 
     def __repr__(self):
@@ -124,3 +121,25 @@ class TopicFile(Base):
 
     def __repr__(self):
         return f"<TopicFile {self.original_name}>"
+
+
+class TopicAsset(Base):
+    """
+    Ассет для доски: SVG-механизмы реакций, изображения формул.
+    """
+    __tablename__ = "topic_assets"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    topic_id = Column(UUID(as_uuid=True), ForeignKey("knowledge_topics.id", ondelete="CASCADE"), nullable=False)
+
+    original_name = Column(String(500), nullable=False)
+    storage_path = Column(String(1000), nullable=False)
+    mime_type = Column(String(100), nullable=True)
+    asset_type = Column(String(50), default="svg")  # svg | image | other
+
+    uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    topic = relationship("KnowledgeTopic", back_populates="assets")
+
+    def __repr__(self):
+        return f"<TopicAsset {self.original_name}>"

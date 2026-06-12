@@ -33,6 +33,16 @@ class TopicFileRead(OrmBase):
     uploaded_at: datetime
 
 
+class TopicAssetRead(OrmBase):
+    id: UUID
+    topic_id: UUID
+    original_name: str
+    storage_path: str
+    mime_type: Optional[str] = None
+    asset_type: str
+    uploaded_at: datetime
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 #  KnowledgeTopic
 # ═══════════════════════════════════════════════════════════════════════════
@@ -42,8 +52,6 @@ class TopicCreate(BaseModel):
     description: Optional[str] = None
     keywords: Optional[str] = None
     lesson_script: Optional[list[dict[str, Any]]] = None
-    miro_board_id: Optional[str] = None
-    miro_board_url: Optional[str] = None
     estimated_duration_min: int = 45
     sort_order: int = 0
     is_published: bool = True
@@ -54,8 +62,6 @@ class TopicUpdate(BaseModel):
     description: Optional[str] = None
     keywords: Optional[str] = None
     lesson_script: Optional[list[dict[str, Any]]] = None
-    miro_board_id: Optional[str] = None
-    miro_board_url: Optional[str] = None
     estimated_duration_min: Optional[int] = None
     sort_order: Optional[int] = None
     is_published: Optional[bool] = None
@@ -68,14 +74,13 @@ class TopicRead(OrmBase):
     description: Optional[str] = None
     keywords: Optional[str] = None
     lesson_script: Optional[list[dict[str, Any]]] = None
-    miro_board_id: Optional[str] = None
-    miro_board_url: Optional[str] = None
     estimated_duration_min: int
     sort_order: int
     is_published: bool
     created_at: datetime
     updated_at: Optional[datetime] = None
     files: list[TopicFileRead] = []
+    assets: list[TopicAssetRead] = []
 
 
 class TopicShort(OrmBase):

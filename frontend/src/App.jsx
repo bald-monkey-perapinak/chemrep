@@ -1,73 +1,67 @@
-import { useState, useEffect } from 'react'
+import { lazy, Suspense, useState, useEffect } from 'react'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import { useStore } from './store/useStore'
-import Dashboard from './components/Dashboard/Dashboard'
-import Calendar from './components/Calendar/Calendar'
-import Lessons from './components/Lessons/Lessons'
-import KnowledgeBase from './components/KnowledgeBase/KnowledgeBase'
-import Students from './components/Students/Students'
-import Settings from './pages/Settings'
+import { api } from './utils/api'
 import LoginPage from './pages/LoginPage'
-import NewLessonModal from './components/shared/NewLessonModal'
-import LessonMonitor from './components/shared/LessonMonitor'
+import RegisterPage from './pages/RegisterPage'
 import Toast from './components/shared/Toast'
 import ErrorBoundary from './components/shared/ErrorBoundary'
-import { api } from './utils/api'
+import NotFound from './components/shared/NotFound'
+import { useOffline } from './hooks/useOffline'
+
+const Dashboard    = lazy(() => import('./components/Dashboard/Dashboard'))
+const Calendar     = lazy(() => import('./components/Calendar/Calendar'))
+const Lessons      = lazy(() => import('./components/Lessons/Lessons'))
+const Students     = lazy(() => import('./components/Students/Students'))
+const KnowledgeBase = lazy(() => import('./components/KnowledgeBase/KnowledgeBase'))
+const Settings     = lazy(() => import('./pages/Settings'))
+const NewLessonModal = lazy(() => import('./components/shared/NewLessonModal'))
+const LessonMonitor  = lazy(() => import('./components/shared/LessonMonitor'))
 
 const SECTIONS = [
-  { id: 'dashboard', label: 'Обзор',       icon: '' },
-  { id: 'calendar',  label: 'Календарь',   icon: '' },
-  { id: 'lessons',   label: 'Занятия',     icon: '' },
-  { id: 'students',  label: 'Ученики',     icon: '' },
-  { id: 'knowledge', label: 'База знаний', icon: '' },
-  { id: 'settings',  label: 'Настройки',  icon: '' },
+  { id: 'dashboard', label: 'Обзор',       path: '/' },
+  { id: 'calendar',  label: 'Календарь',   path: '/calendar' },
+  { id: 'lessons',   label: 'Занятия',     path: '/lessons' },
+  { id: 'students',  label: 'Ученики',     path: '/students' },
+  { id: 'knowledge', label: 'База знаний', path: '/knowledge' },
+  { id: 'settings',  label: 'Настройки',  path: '/settings' },
 ]
 
-export default function App() {
-  const activeSection    = useStore(s => s.activeSection)
-  const setActiveSection = useStore(s => s.setActiveSection)
-  const fetchStudents   = useStore(s => s.fetchStudents)
-  const fetchLessons    = useStore(s => s.fetchLessons)
-  const fetchKbTree     = useStore(s => s.fetchKbTree)
+function Loading() {
+  return <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>Загрузка...</div>
+}
 
-  const [loggedIn, setLoggedIn]     = useState(!!localStorage.getItem('token'))
-  const [authChecking, setAuthChecking] = useState(!!localStorage.getItem('token'))
+function AppShell() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const fetchStudents = useStore(s => s.fetchStudents)
+  const fetchLessons  = useStore(s => s.fetchLessons)
+  const fetchKbTree   = useStore(s => s.fetchKbTree)
+
   const [lessonModalOpen, setLessonModalOpen] = useState(false)
   const [lessonModalDate, setLessonModalDate] = useState(null)
   const [monitorLessonId, setMonitorLessonId] = useState(null)
 
+  const isOffline = useOffline()
+
   useEffect(() => {
-    if (!localStorage.getItem('token')) return
-    api.me()
-      .then(() => setLoggedIn(true))
-      .catch(() => { localStorage.removeItem('token'); setLoggedIn(false) })
-      .finally(() => setAuthChecking(false))
+    fetchStudents()
+    fetchLessons()
+    fetchKbTree()
   }, [])
 
-  useEffect(() => {
-    if (loggedIn) {
-      fetchStudents()
-      fetchLessons()
-      fetchKbTree()
-    }
-  }, [loggedIn])
+  useEffect(() => { window.__openMonitor = setMonitorLessonId }, [])
 
-  useEffect(() => { window.__openMonitor = setMonitorLessonId }, [setMonitorLessonId])
-
-  useEffect(() => {
-    const handleLogout = () => setLoggedIn(false)
-    window.addEventListener('auth:logout', handleLogout)
-    return () => window.removeEventListener('auth:logout', handleLogout)
-  }, [])
+  const activeSection = SECTIONS.find(s => s.path === location.pathname)?.id || 'dashboard'
 
   function openNewLesson(date) {
     setLessonModalDate(date || null)
     setLessonModalOpen(true)
   }
 
-  if (authChecking) return null
-  if (!loggedIn) return <LoginPage onLogin={() => setLoggedIn(true)} />
-
-  const sectionTitle = SECTIONS.find(s => s.id === activeSection)?.label || ''
+  function handleNav(path) {
+    navigate(path)
+  }
 
   return (
     <div className="app">
@@ -80,14 +74,14 @@ export default function App() {
           {SECTIONS.map(s => (
             <button key={s.id}
               className={`nav-item${activeSection === s.id ? ' active' : ''}`}
-              onClick={() => setActiveSection(s.id)}>
+              onClick={() => handleNav(s.path)}>
               {s.label}
             </button>
           ))}
         </nav>
         <div className="sidebar-footer">
           <button className="link-btn" style={{ fontSize: 12 }}
-            onClick={() => { api.logout(); setLoggedIn(false) }}>
+            onClick={() => { api.logout(); navigate('/login') }}>
             Выйти
           </button>
         </div>
@@ -95,21 +89,38 @@ export default function App() {
 
       <main className="main">
         <div className="topbar">
-          <span className="topbar-title">{sectionTitle}</span>
+          <span className="topbar-title">
+            {SECTIONS.find(s => s.id === activeSection)?.label || ''}
+          </span>
           {activeSection !== 'settings' && (
             <button className="btn btn-primary" onClick={() => openNewLesson()}>
               Новое занятие
             </button>
           )}
         </div>
+        {isOffline && (
+          <div style={{
+            background: 'var(--color-warning)',
+            color: 'white',
+            padding: '8px 16px',
+            textAlign: 'center'
+          }}>
+            Нет подключения к интернету
+          </div>
+        )}
         <div className="content">
           <ErrorBoundary>
-            {activeSection === 'dashboard' && <Dashboard />}
-            {activeSection === 'calendar'  && <Calendar onOpenNewLesson={openNewLesson} />}
-            {activeSection === 'lessons'   && <Lessons />}
-            {activeSection === 'students'  && <Students />}
-            {activeSection === 'knowledge' && <KnowledgeBase />}
-            {activeSection === 'settings'  && <Settings />}
+            <Suspense fallback={<Loading />}>
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/calendar" element={<Calendar onOpenNewLesson={openNewLesson} />} />
+                <Route path="/lessons" element={<Lessons />} />
+                <Route path="/students" element={<Students />} />
+                <Route path="/knowledge" element={<KnowledgeBase />} />
+                <Route path="/settings" element={<Settings />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
           </ErrorBoundary>
         </div>
       </main>
@@ -128,5 +139,44 @@ export default function App() {
         />
       )}
     </div>
+  )
+}
+
+export default function App() {
+  const [loggedIn, setLoggedIn] = useState(!!localStorage.getItem('token'))
+  const [authChecking, setAuthChecking] = useState(!!localStorage.getItem('token'))
+
+  useEffect(() => {
+    if (!localStorage.getItem('token')) return
+    api.me()
+      .then(() => setLoggedIn(true))
+      .catch(() => { localStorage.removeItem('token'); setLoggedIn(false) })
+      .finally(() => setAuthChecking(false))
+  }, [])
+
+  useEffect(() => {
+    const handleLogout = () => setLoggedIn(false)
+    window.addEventListener('auth:logout', handleLogout)
+    return () => window.removeEventListener('auth:logout', handleLogout)
+  }, [])
+
+  if (authChecking) return null
+
+  return (
+    <BrowserRouter>
+      <Routes>
+        {!loggedIn ? (
+          <>
+            <Route path="/register" element={<RegisterPage onRegister={() => setLoggedIn(true)} />} />
+            <Route path="*" element={<LoginPage onLogin={() => setLoggedIn(true)} />} />
+          </>
+        ) : (
+          <>
+            <Route path="/login" element={<Navigate to="/" replace />} />
+            <Route path="/*" element={<AppShell />} />
+          </>
+        )}
+      </Routes>
+    </BrowserRouter>
   )
 }

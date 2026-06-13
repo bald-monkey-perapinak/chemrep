@@ -1,28 +1,22 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../utils/api'
 
 export default function LoginPage({ onLogin }) {
-  const [mode, setMode]       = useState('login')   // 'login' | 'register'
   const [email, setEmail]     = useState('')
   const [password, setPass]   = useState('')
-  const [name, setName]       = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
 
-  async function submit() {
+  async function submit(e) {
+    e.preventDefault()
     if (!email || !password) { setError('Заполните все поля'); return }
     setLoading(true); setError('')
     try {
-      if (mode === 'login') {
-        await api.login(email, password)
-      } else {
-        if (!name) { setError('Введите имя'); setLoading(false); return }
-        await api.register(email, password, name)
-        await api.login(email, password)
-      }
+      await api.login(email, password)
       onLogin()
-    } catch (e) {
-      setError(e.message)
+    } catch (err) {
+      setError(err.message)
     } finally {
       setLoading(false)
     }
@@ -33,7 +27,7 @@ export default function LoginPage({ onLogin }) {
       minHeight: '100vh', display: 'flex', alignItems: 'center',
       justifyContent: 'center', background: 'var(--color-bg)',
     }}>
-      <div style={{
+      <form onSubmit={submit} style={{
         background: 'var(--color-surface)', border: '0.5px solid var(--color-border)',
         borderRadius: 16, padding: '36px 40px', width: 380,
       }}>
@@ -41,51 +35,37 @@ export default function LoginPage({ onLogin }) {
           ХимТьютор
         </div>
         <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 28 }}>
-          {mode === 'login' ? 'Войдите в кабинет преподавателя' : 'Создайте аккаунт'}
+          Войдите в кабинет преподавателя
         </div>
-
-        {mode === 'register' && (
-          <div className="form-group">
-            <label className="form-label">Полное имя</label>
-            <input className="form-input" value={name} onChange={e => setName(e.target.value)}
-              placeholder="Иванова Алина Петровна" autoFocus />
-          </div>
-        )}
 
         <div className="form-group">
           <label className="form-label">Email</label>
           <input className="form-input" type="email" value={email}
-            onChange={e => setEmail(e.target.value)} placeholder="teacher@school.ru"
-            onKeyDown={e => e.key === 'Enter' && submit()}
-            autoFocus={mode === 'login'} />
+            onChange={e => setEmail(e.target.value)} placeholder="teacher@school.ru" autoFocus />
         </div>
 
         <div className="form-group">
           <label className="form-label">Пароль</label>
           <input className="form-input" type="password" value={password}
-            onChange={e => setPass(e.target.value)} placeholder="Минимум 8 символов"
-            onKeyDown={e => e.key === 'Enter' && submit()} />
+            onChange={e => setPass(e.target.value)} placeholder="Минимум 8 символов" />
         </div>
 
         {error && (
           <div style={{ fontSize: 12, color: '#A32D2D', marginBottom: 12 }}>{error}</div>
         )}
 
-        <button className="btn btn-primary" onClick={submit} disabled={loading}
+        <button className="btn btn-primary" type="submit" disabled={loading}
           style={{ width: '100%', justifyContent: 'center', marginBottom: 12 }}>
-          {loading ? 'Подождите…' : mode === 'login' ? 'Войти' : 'Зарегистрироваться'}
+          {loading ? 'Подождите…' : 'Войти'}
         </button>
 
         <div style={{ fontSize: 12, color: 'var(--color-text-muted)', textAlign: 'center' }}>
-          {mode === 'login' ? (
-            <>Нет аккаунта? <button className="link-btn" style={{ fontSize: 12 }}
-              onClick={() => { setMode('register'); setError('') }}>Зарегистрироваться</button></>
-          ) : (
-            <>Уже есть аккаунт? <button className="link-btn" style={{ fontSize: 12 }}
-              onClick={() => { setMode('login'); setError('') }}>Войти</button></>
-          )}
+          Нет аккаунта?{' '}
+          <Link to="/register" style={{ color: 'var(--color-primary, #4f6ef7)', fontSize: 12 }}>
+            Зарегистрироваться
+          </Link>
         </div>
-      </div>
+      </form>
     </div>
   )
 }

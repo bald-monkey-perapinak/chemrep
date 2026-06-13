@@ -3,11 +3,15 @@ import { createServer } from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import jwt from 'jsonwebtoken';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const PORT = process.env.PORT || 3001;
+const JWT_SECRET = process.env.JWT_SECRET || '';
+const JWT_STUB_MODE = process.env.BOARD_STUB_MODE === 'true';
+
 const app = express();
 const server = createServer(app);
 
@@ -18,12 +22,28 @@ const wss = new WebSocketServer({ server });
 
 const rooms = new Map();
 
+function verifyToken(token) {
+  if (!JWT_SECRET || JWT_STUB_MODE) return true;
+  try {
+    jwt.verify(token, JWT_SECRET);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 wss.on('connection', (ws, req) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathMatch = url.pathname.match(/^\/rooms\/(.+)$/);
 
   if (!pathMatch) {
     ws.close(4000, 'Invalid path. Use /rooms/{session_id}');
+    return;
+  }
+
+  const token = url.searchParams.get('token');
+  if (!verifyToken(token)) {
+    ws.close(4001, 'Unauthorized');
     return;
   }
 

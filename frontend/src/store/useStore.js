@@ -46,12 +46,16 @@ export const useStore = create((set, get) => ({
   students: [],
   studentsLoading: false,
 
+  studentsPage: 1,
+  studentsTotal: 0,
+  setStudentsPage: (page) => set({ studentsPage: page }),
+
   fetchStudents: async () => {
     set({ studentsLoading: true })
     try {
-      const data = await api.listStudents()
-      set({ students: data || [] })
-    } catch { set({ students: [] }) }
+      const data = await api.listStudents({ page: get().studentsPage, page_size: 50 })
+      set({ students: data?.items || [], studentsTotal: data?.total || 0 })
+    } catch { set({ students: [], studentsTotal: 0 }) }
     set({ studentsLoading: false })
   },
 

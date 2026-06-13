@@ -62,6 +62,12 @@ class StudentOut(BaseModel):
     class Config:
         from_attributes = True
 
+class PaginatedStudents(BaseModel):
+    items: list[StudentOut]
+    total: int
+    page: int
+    page_size: int
+
 class StudentDetail(StudentOut):
     lessons: list[LessonShort] = []
 
@@ -87,16 +93,28 @@ def _get_or_404(db: Session, student_id: UUID, teacher: Teacher) -> Student:
 
 # ── Эндпоинты ─────────────────────────────────────────────────────────────
 
-@router.get("", response_model=list[StudentOut], summary="Список учеников")
+@router.get("", response_model=PaginatedStudents, summary="Список учеников (с пагинацией)")
 def list_students(
     active_only: bool     = True,
+    page:        int      = Query(1, ge=1),
+    page_size:   int      = Query(50, ge=1, le=200),
     teacher:     Teacher  = Depends(get_current_teacher),
     db:          Session  = Depends(get_db),
 ):
     q = db.query(Student).filter(Student.teacher_id == teacher.id)
     if active_only:
         q = q.filter(Student.is_active == True)  # noqa: E712
-    return [_student_out(s) for s in q.order_by(Student.full_name).all()]
+
+    total = q.count()
+    offset = (page - 1) * page_size
+    items = q.order_by(Student.full_name).offset(offset).limit(page_size).all()
+
+    return PaginatedStudents(
+        items=[_student_out(s) for s in items],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.post("", response_model=StudentOut, status_code=201,

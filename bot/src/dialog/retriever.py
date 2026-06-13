@@ -320,16 +320,20 @@ def _truncate(text: str, max_len: int) -> str:
 
 
 def _split_into_chunks(text: str, chunk_size: int) -> list[str]:
-    """Разбить длинный текст на перекрывающиеся чанки."""
+    """Разбить длинный текст на перекрывающиеся чанки по словам."""
     words = text.split()
+    if not words:
+        return [text[:chunk_size]] if text else []
+
     result = []
-    step = chunk_size // 5
-    start = 0
-    while start < len(text):
-        chunk = text[start: start + chunk_size]
+    overlap = max(1, chunk_size // 5)
+    i = 0
+    while i < len(words):
+        chunk_words = words[i:i + chunk_size]
+        chunk = " ".join(chunk_words)
         if chunk.strip():
             result.append(chunk.strip())
-        start += step
-        if start >= len(text):
+        i += chunk_size - overlap
+        if i >= len(words):
             break
     return result or [text[:chunk_size]]

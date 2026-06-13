@@ -220,11 +220,17 @@ class StubDialogEngine(BaseDialogEngine):
         "Попробуй подумать об этом с другой стороны.",
         "Верно подмечено. Продолжаем.",
     ]
-    _idx = 0
+
+    def __init__(self, retriever=None):
+        self._retriever = retriever
+        self._history: list[DialogMessage] = []
+        self._idx = 0
 
     async def respond(self, student_text: str) -> DialogResponse:
         text = self.RESPONSES[self._idx % len(self.RESPONSES)]
         self._idx += 1
+        self._history.append(DialogMessage(role="user", text=student_text))
+        self._history.append(DialogMessage(role="assistant", text=text))
         return DialogResponse(text=text)
 
     async def close(self) -> None:

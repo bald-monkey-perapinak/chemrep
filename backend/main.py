@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.api.versioned import versioned_router
 
 from src.middleware.rate_limit import RateLimitMiddleware
+from src.middleware.request_id import RequestIDMiddleware
 from src.api.routes.auth      import router as auth_router
 from src.api.routes.knowledge  import router as knowledge_router
 from src.api.routes.students   import router as students_router
@@ -61,6 +62,7 @@ app.add_middleware(
 )
 
 app.add_middleware(RateLimitMiddleware, max_requests=30, window_seconds=60)
+app.add_middleware(RequestIDMiddleware)
 
 
 @app.get("/health", tags=["system"])

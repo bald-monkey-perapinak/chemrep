@@ -55,7 +55,7 @@ class TestJWTToken:
 @pytest.mark.asyncio
 async def test_register(client):
     response = await client.post(
-        "/api/auth/register",
+        "/api/v1/auth/register",
         json={
             "email": "newteacher@example.com",
             "password": "password123",
@@ -72,7 +72,7 @@ async def test_register(client):
 @pytest.mark.asyncio
 async def test_login(client, test_teacher):
     response = await client.post(
-        "/api/auth/login",
+        "/api/v1/auth/login",
         data={"username": "teacher@example.com", "password": "password123"},
     )
     assert response.status_code == 200
@@ -84,7 +84,7 @@ async def test_login(client, test_teacher):
 @pytest.mark.asyncio
 async def test_login_wrong_password(client, test_teacher):
     response = await client.post(
-        "/api/auth/login",
+        "/api/v1/auth/login",
         data={"username": "teacher@example.com", "password": "wrongpassword"},
     )
     assert response.status_code == 401
@@ -93,7 +93,7 @@ async def test_login_wrong_password(client, test_teacher):
 @pytest.mark.asyncio
 async def test_me(client, auth_token):
     response = await client.get(
-        "/api/auth/me",
+        "/api/v1/auth/me",
         headers={"Authorization": f"Bearer {auth_token}"},
     )
     assert response.status_code == 200
@@ -104,5 +104,5 @@ async def test_me(client, auth_token):
 
 @pytest.mark.asyncio
 async def test_me_no_token(client):
-    response = await client.get("/api/auth/me")
+    response = await client.get("/api/v1/auth/me")
     assert response.status_code == 401

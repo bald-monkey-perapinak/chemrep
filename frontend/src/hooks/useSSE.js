@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
+const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
 
 /**
  * useSSE — подписка на SSE-поток событий урока.

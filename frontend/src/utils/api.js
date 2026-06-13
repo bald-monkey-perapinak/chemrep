@@ -1,10 +1,32 @@
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
+const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
 
 function getToken() {
   return localStorage.getItem('token')
 }
 
-async function request(method, path, body) {
+function getRefreshToken() {
+  return localStorage.getItem('refresh_token')
+}
+
+async function tryRefreshToken() {
+  const refreshToken = getRefreshToken()
+  if (!refreshToken) return false
+  try {
+    const res = await fetch(`${BASE}/auth/refresh?refresh_token=${encodeURIComponent(refreshToken)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    })
+    if (!res.ok) return false
+    const data = await res.json()
+    localStorage.setItem('token', data.access_token)
+    localStorage.setItem('refresh_token', data.refresh_token)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function request(method, path, body, retries = 1) {
   const token = getToken()
   const opts = {
     method,
@@ -17,8 +39,13 @@ async function request(method, path, body) {
 
   const res = await fetch(`${BASE}${path}`, opts)
 
-  if (res.status === 401) {
+  if (res.status === 401 && retries > 0) {
+    const refreshed = await tryRefreshToken()
+    if (refreshed) {
+      return request(method, path, body, retries - 1)
+    }
     localStorage.removeItem('token')
+    localStorage.removeItem('refresh_token')
     window.dispatchEvent(new CustomEvent('auth:logout'))
     return
   }
@@ -35,14 +62,10 @@ async function request(method, path, body) {
 export const api = {
   // ── Auth ────────────────────────────────────────────────────────────────
   login:    async (email, password) => {
-    const token = getToken()
     const formBody = new URLSearchParams({ username: email, password }).toString()
     const res = await fetch(`${BASE}/auth/login`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: formBody,
     })
     if (res.status === 401) {
@@ -54,13 +77,14 @@ export const api = {
     }
     const d = await res.json()
     localStorage.setItem('token', d.access_token)
+    localStorage.setItem('refresh_token', d.refresh_token)
     return d
   },
   register: (email, password, full_name) =>
     request('POST', '/auth/register', { email, password, full_name }),
   me:       ()                => request('GET',  '/auth/me'),
   updateMe: (data)            => request('PATCH', '/auth/me', data),
-  logout:   ()                => localStorage.removeItem('token'),
+  logout:   ()                => { localStorage.removeItem('token'); localStorage.removeItem('refresh_token') },
 
   // ── Lessons ─────────────────────────────────────────────────────────────
   listLessons:   (params = {}) => {
@@ -77,7 +101,12 @@ export const api = {
   upsertHomework: (id, data)  => request('PATCH',  `/lessons/${id}/homework`, data),
 
   // ── Students ────────────────────────────────────────────────────────────
-  listStudents:  ()           => request('GET',    '/students'),
+  listStudents:  (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([, v]) => v != null))
+    ).toString()
+    return request('GET', `/students${qs ? '?' + qs : ''}`)
+  },
   createStudent: (data)       => request('POST',   '/students', data),
   getStudent:    (id)         => request('GET',    `/students/${id}`),
   updateStudent: (id, data)   => request('PATCH',  `/students/${id}`, data),

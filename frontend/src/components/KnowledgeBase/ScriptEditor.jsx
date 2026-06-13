@@ -235,7 +235,7 @@ export default function ScriptEditor({ script = [], onChange }) {
       const formData = new FormData()
       formData.append('file', file)
 
-      fetch('/api/extract/text', {
+      fetch('/api/v1/extract/text', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${localStorage.getItem('token') || ''}`,

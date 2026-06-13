@@ -40,12 +40,13 @@ def _get_jwt_secret() -> str:
         )
     return secret
 
-SECRET_KEY      = _get_jwt_secret()
-ALGORITHM       = "HS256"
-TOKEN_EXPIRE_H  = 24 * 7   # 7 дней
+SECRET_KEY              = _get_jwt_secret()
+ALGORITHM               = "HS256"
+ACCESS_TOKEN_EXPIRE_MIN = 30      # access token живёт 30 минут
+REFRESH_TOKEN_EXPIRE_D  = 30      # refresh token живёт 30 дней
 
 pwd_ctx    = None  # removed, using bcrypt directly
-oauth2     = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+oauth2     = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
 
 
 # ── Схемы ─────────────────────────────────────────────────────────────────
@@ -56,8 +57,9 @@ class RegisterRequest(BaseModel):
     full_name:  str = Field(..., min_length=2)
 
 class LoginResponse(BaseModel):
-    access_token: str
-    token_type:   str = "bearer"
+    access_token:  str
+    refresh_token: str
+    token_type:    str = "bearer"
 
 class TeacherOut(BaseModel):
     model_config = {"from_attributes": True, "protected_namespaces": ()}
@@ -83,9 +85,13 @@ def _hash(password: str) -> str:
 def _verify(plain: str, hashed: str) -> bool:
     return _bcrypt.checkpw(plain.encode(), hashed.encode())
 
-def _make_token(teacher_id: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(hours=TOKEN_EXPIRE_H)
-    return jwt.encode({"sub": teacher_id, "exp": expire}, SECRET_KEY, algorithm=ALGORITHM)
+def _make_access_token(teacher_id: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MIN)
+    return jwt.encode({"sub": teacher_id, "exp": expire, "type": "access"}, SECRET_KEY, algorithm=ALGORITHM)
+
+def _make_refresh_token(teacher_id: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_D)
+    return jwt.encode({"sub": teacher_id, "exp": expire, "type": "refresh"}, SECRET_KEY, algorithm=ALGORITHM)
 
 
 def get_current_teacher(
@@ -155,7 +161,44 @@ def login(
         raise HTTPException(401, "Неверный email или пароль")
     if not teacher.is_active:
         raise HTTPException(403, "Аккаунт деактивирован")
-    return {"access_token": _make_token(str(teacher.id))}
+    teacher_id = str(teacher.id)
+    return {
+        "access_token":  _make_access_token(teacher_id),
+        "refresh_token": _make_refresh_token(teacher_id),
+    }
+
+
+@router.post("/refresh", response_model=LoginResponse,
+             summary="Обновить токены по refresh token")
+def refresh_token(
+    refresh_token: str,
+    db:            Session = Depends(get_db),
+):
+    cred_exc = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Недействительный refresh token",
+    )
+    try:
+        payload    = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        teacher_id = payload.get("sub")
+        token_type = payload.get("type")
+        if not teacher_id or token_type != "refresh":
+            raise cred_exc
+    except JWTError:
+        raise cred_exc
+
+    teacher = db.query(Teacher).filter(
+        Teacher.id == teacher_id,
+        Teacher.is_active == True,  # noqa: E712
+    ).first()
+    if not teacher:
+        raise cred_exc
+
+    tid = str(teacher.id)
+    return {
+        "access_token":  _make_access_token(tid),
+        "refresh_token": _make_refresh_token(tid),
+    }
 
 
 @router.get("/me", response_model=TeacherOut, summary="Профиль текущего преподавателя")

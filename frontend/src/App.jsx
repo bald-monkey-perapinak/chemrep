@@ -81,7 +81,7 @@ function AppShell() {
         </nav>
         <div className="sidebar-footer">
           <button className="link-btn" style={{ fontSize: 12 }}
-            onClick={() => { api.logout(); navigate('/login') }}>
+            onClick={() => { api.logout(); window.dispatchEvent(new Event('auth:logout')); navigate('/login') }}>
             Выйти
           </button>
         </div>

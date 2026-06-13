@@ -63,6 +63,8 @@ STEP_PAUSE     = 1.0
 CHUNK_SIZE     = 640    # 20 мс PCM @ 16kHz 16-bit mono
 MAX_RECONNECT_ATTEMPTS = 3
 RECONNECT_DELAYS = [5, 15, 45]  # секунды между попытками (exponential backoff)
+STUDENT_CONNECT_TIMEOUT = 600  # 10 minutes
+STUDENT_CONNECT_CHECK_INTERVAL = 30  # Check every 30 seconds
 
 
 class LessonRunner:
@@ -207,6 +209,24 @@ class LessonRunner:
 
         self._log_event("bot_joined", {"link": lesson.vcs_link})
         self._publish('bot_joined', {'link': lesson.vcs_link, 'session_status': 'active'})
+
+    async def _wait_for_student(self, timeout: float = STUDENT_CONNECT_TIMEOUT) -> bool:
+        """
+        Wait for student to connect to the conference.
+        Returns True if student connected, False on timeout.
+        """
+        start_time = asyncio.get_event_loop().time()
+        
+        while asyncio.get_event_loop().time() - start_time < timeout:
+            # Check if student is in the conference
+            if self._vcs and self._vcs.student_connected():
+                logger.info(f"[runner {self.lesson.id}] Student connected")
+                return True
+            
+            await asyncio.sleep(STUDENT_CONNECT_CHECK_INTERVAL)
+        
+        logger.warning(f"[runner {self.lesson.id}] Student connect timeout after {timeout}s")
+        return False
 
     # ──────────────────────────────────────────────────────────────────────
     # Ведение урока

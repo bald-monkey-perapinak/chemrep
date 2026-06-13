@@ -1,11 +1,13 @@
 import { useStore } from '../../store/useStore'
 import { findNode, fileIcon, countChildren, formatSize } from '../../utils/helpers'
+import ScriptEditor from './ScriptEditor'
 
 export default function KbDetail() {
   const kbTree          = useStore(s => s.kbTree)
   const selectedKbNode  = useStore(s => s.selectedKbNode)
   const deleteFile      = useStore(s => s.deleteFile)
   const addFiles        = useStore(s => s.addFiles)
+  const updateTopic     = useStore(s => s.updateTopic)
   const showToast       = useStore(s => s.showToast)
 
   const node = selectedKbNode ? findNode(kbTree, selectedKbNode) : null
@@ -35,12 +37,13 @@ export default function KbDetail() {
 
   if (node.type === 'topic') {
     const files = node.files || []
+    const script = node.lesson_script || []
     return (
       <div className="kb-detail">
         <div className="card">
           <div style={{ fontSize: 15, fontWeight: 500, marginBottom: 4 }}>{node.name}</div>
           <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 16 }}>
-            Тема · {files.length} файлов
+            Тема · {files.length} файлов · {script.length} шагов сценария
           </div>
           <div className="kb-files">
             {files.length === 0 ? (
@@ -69,6 +72,20 @@ export default function KbDetail() {
               <i className="ti ti-upload"></i> Загрузить файл
             </button>
           </div>
+        </div>
+
+        <div className="card" style={{ marginTop: 12 }}>
+          <ScriptEditor
+            script={script}
+            onChange={async (newScript) => {
+              try {
+                await updateTopic(node.id, { lesson_script: newScript })
+                showToast('Сценарий сохранён')
+              } catch (e) {
+                showToast('Ошибка: ' + e.message)
+              }
+            }}
+          />
         </div>
       </div>
     )

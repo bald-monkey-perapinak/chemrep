@@ -4,7 +4,7 @@ LessonRunner — управляет одним активным уроком.
 Жизненный цикл:
   prepare()      — создать LessonSession, перевести урок в IN_PROGRESS
   init_audio()   — инициализировать TTS + ASR (загрузка моделей)
-  init_dialog()  — создать RAGRetriever + ClaudeDialogEngine
+  init_dialog()  — создать RAGRetriever + TutorDialogEngine
   connect_vcs()  — подключиться к конференции
   conduct()      — вести урок по сценарию
   cleanup()      — отключиться, сохранить транскрипт
@@ -12,7 +12,9 @@ LessonRunner — управляет одним активным уроком.
 На каждом шаге сценария:
   text → TTS → PCM → vcs.send_audio()          (бот говорит)
   vcs.recv_audio() → VAD → Whisper → text       (бот слушает)
+  text → IntentClassifier → TeachingStrategy    (классификация + выбор методики)
   text → RAG → Claude API → reply               (бот отвечает)
+  StudentModel → обновление прогресса           (отслеживание понимания)
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ import logging
 import sys
 import os
 from datetime import datetime, timezone
+from typing import Optional
 
 _backend = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "backend"))
 if _backend not in sys.path:
@@ -31,11 +34,14 @@ from sqlalchemy.orm import Session
 
 from src.models.lesson import Lesson, LessonStatus
 from src.models.session import LessonSession, SessionStatus
+from src.models.student import StudentProgress
 from src.vcs.client import make_vcs_client, VCSConnectionInfo, VCSPlatformType
 from src.audio.tts import make_tts, BaseTTS
 from src.audio.asr import make_asr
 from src.dialog.retriever import RAGRetriever
-from src.dialog.engine import make_dialog_engine, BaseDialogEngine
+from src.dialog.tutor_engine import make_tutor_engine, TutorDialogEngine, StubTutorEngine, TutorResponse
+from src.dialog.script_processor import process_lesson_script, ProcessedScript
+from src.dialog.lesson_summary import generate_lesson_summary, format_summary_for_tts, format_summary_for_db
 from src.board.client import make_board_client, BaseBoardClient
 from src.orchestrator.homework import deliver_homework
 
@@ -67,7 +73,7 @@ class LessonRunner:
         self._vcs    = None
         self._tts: BaseTTS | None           = None
         self._asr    = None
-        self._llm: BaseDialogEngine | None  = None
+        self._llm: TutorDialogEngine | StubTutorEngine | None  = None
         self._board: BaseBoardClient | None = None
         self._dialog: list[dict] = []
         self._events: list[dict] = []
@@ -138,9 +144,13 @@ class LessonRunner:
                     lesson.id, type(self._tts).__name__, type(self._asr).__name__)
 
     async def _init_dialog(self) -> None:
-        """Создать RAGRetriever и LLM-движок."""
+        """Создать RAGRetriever и профессиональный TutorDialogEngine."""
         lesson = self.lesson
         topic  = lesson.topic
+
+        # Получаем данные ученика
+        student_name = lesson.student.full_name.split()[0] if lesson.student else "ученик"
+        student_grade = lesson.student.grade if lesson.student and lesson.student.grade else 9
 
         if topic:
             retriever = RAGRetriever(
@@ -154,11 +164,23 @@ class LessonRunner:
             retriever     = None
             topic_context = "Тема урока не указана."
 
-        self._llm = make_dialog_engine(
+        # Загружаем профиль стиля преподавателя
+        teaching_style = self._load_teaching_style()
+
+        self._llm = make_tutor_engine(
             retriever=retriever,
             topic_context=topic_context,
+            student_name=student_name,
+            student_grade=student_grade,
+            teaching_style=teaching_style,
         )
-        logger.info("[runner %s] LLM=%s", lesson.id, type(self._llm).__name__)
+        logger.info(
+            "[runner %s] LLM=%s  student=%s grade=%d",
+            lesson.id, type(self._llm).__name__, student_name, student_grade,
+        )
+
+        # Загружаем прогресс ученика из предыдущих уроков
+        await self._load_student_progress()
 
     async def _init_board(self) -> None:
         session_id = str(self.session.id) if self.session else None
@@ -192,9 +214,29 @@ class LessonRunner:
 
     async def _conduct_lesson(self) -> None:
         lesson       = self.lesson
-        script       = (lesson.topic.lesson_script or []) if lesson.topic else []
+        raw_script   = (lesson.topic.lesson_script or []) if lesson.topic else []
         student_name = lesson.student.full_name.split()[0] if lesson.student else "ученик"
         topic_name   = lesson.topic.name if lesson.topic else "химии"
+
+        # Обрабатываем сценарий (автогенерация команд доски, сложности и т.д.)
+        processed_script = ProcessedScript(steps=[], key_concepts=[])
+        if raw_script:
+            processed_script = process_lesson_script(
+                raw_script,
+                topic_name=topic_name,
+                topic_description=lesson.topic.description if lesson.topic else "",
+            )
+            logger.info(
+                "[runner %s] Сценарий обработан: %d шагов, концепции: %s",
+                lesson.id, len(processed_script.steps),
+                ", ".join(processed_script.key_concepts[:5]),
+            )
+
+        script = processed_script.steps
+
+        # Устанавливаем контекст шагов в движке
+        if hasattr(self._llm, 'set_step_context'):
+            self._llm.set_step_context(0, len(script))
 
         if not script:
             await self._speak(
@@ -210,11 +252,19 @@ class LessonRunner:
             )
             await asyncio.sleep(STEP_PAUSE)
 
-            for i, step in enumerate(script):
-                step_text   = step.get("text", "")
-                question    = step.get("question")
-                board_commands = step.get("board_commands", [])
-                listen_after = step.get("listen", True)
+            i = 0
+            while i < len(script):
+                step = script[i]
+                step_text   = step.text
+                question    = step.question
+                board_commands = step.board_commands
+                listen_after = step.listen
+                speak_only = step.speak_only
+                difficulty = step.difficulty
+
+                # Обновляем контекст шага в движке
+                if hasattr(self._llm, 'set_step_context'):
+                    self._llm.set_step_context(i, len(script))
 
                 self.session.current_step = i + 1
                 self.db.commit()
@@ -222,34 +272,91 @@ class LessonRunner:
                     'step': i + 1,
                     'total': len(script),
                     'text': step_text[:120] if step_text else None,
+                    'difficulty': difficulty,
+                    'key_concepts': step.key_concepts,
                 })
 
-                logger.info("[runner %s] Шаг %d/%d", lesson.id, i + 1, len(script))
+                logger.info(
+                    "[runner %s] Шаг %d/%d (difficulty=%s, speak_only=%s, concepts=%s)",
+                    lesson.id, i + 1, len(script), difficulty, speak_only,
+                    ", ".join(step.key_concepts[:3]),
+                )
 
-                for cmd in board_commands:
-                    self._log_event("board_action", {"command": cmd, "step": i + 1})
-                    self._publish('board_action', {'command': cmd, 'step': i + 1})
-                    if self._board:
-                        await self._board.execute(cmd)
+                # Выполняем команды доски (если не speak_only)
+                if not speak_only:
+                    for cmd in board_commands:
+                        self._log_event("board_action", {"command": cmd, "step": i + 1})
+                        self._publish('board_action', {'command': cmd, 'step': i + 1})
+                        if self._board:
+                            await self._board.execute(cmd)
 
+                # Озвучиваем текст шага
                 if step_text:
                     await self._speak_with_reconnect(step_text)
 
+                # Задаём вопрос (если есть)
                 if question:
                     await self._speak_with_reconnect(question)
                     self._log_event("question_asked", {"step": i + 1, "question": question})
                     self._publish('question_asked', {'step': i + 1, 'question': question})
 
+                # Слушаем ответ ученика (если нужно)
                 if listen_after and question:
-                    await self._listen_and_respond_with_reconnect()
+                    response = await self._listen_and_respond_with_reconnect()
+
+                    # Проверяем, нужно ли адаптировать темп
+                    if response and hasattr(response, 'strategy') and response.strategy:
+                        adjustment = response.strategy.next_step_adjustment
+                        if adjustment < 0 and i > 0:
+                            # Вернуться на шаг назад
+                            i = max(0, i - 1)
+                            logger.info(
+                                "[runner %s] Адаптация: возврат к шагу %d (reason: %s)",
+                                lesson.id, i + 1, response.strategy.reason,
+                            )
+                            continue
+                        elif adjustment > 0 and i < len(script) - 1:
+                            # Ускориться (пропустить текущий шаг)
+                            logger.info(
+                                "[runner %s] Адаптация: ускорение (reason: %s)",
+                                lesson.id, response.strategy.reason,
+                            )
 
                 await asyncio.sleep(STEP_PAUSE)
+                i += 1
 
+            # Генерируем сводку урока
+            summary = None
+            if hasattr(self._llm, 'get_student_model'):
+                student_model = self._llm.get_student_model()
+                summary = generate_lesson_summary(
+                    student_model=student_model,
+                    topic_name=topic_name,
+                    topics_covered=processed_script.key_concepts,
+                    steps_completed=len(script),
+                    total_steps=len(script),
+                )
+                # Сохраняем сводку
+                self._log_event("lesson_summary", {
+                    "brief": summary.brief_summary,
+                    "accuracy": summary.accuracy_percent,
+                    "understanding": summary.overall_understanding,
+                })
+                self._publish('lesson_summary', {
+                    'brief': summary.brief_summary,
+                    'accuracy': summary.accuracy_percent,
+                })
+
+            # Завершение урока
             await self._speak_with_reconnect(
                 "Отлично! Урок завершён. "
                 "Если остались вопросы — задавай, у нас ещё есть минута."
             )
             await self._free_dialog_with_reconnect(timeout=60.0)
+
+            # Озвучиваем краткую сводку
+            if summary:
+                await self._speak_with_reconnect(summary.student_summary)
 
             await self._speak_with_reconnect(
                 "Домашнее задание придёт на почту. До свидания!"
@@ -286,11 +393,32 @@ class LessonRunner:
                 response = await self._llm.respond(phrase)
                 reply    = response.text
 
-                if response.used_chunks:
+                # Логируем дополнительную информацию
+                if hasattr(response, 'intent') and response.intent:
+                    self._log_event("intent_classified", {
+                        "type": response.intent.type.value,
+                        "confidence": response.intent.confidence,
+                    })
+                if hasattr(response, 'strategy') and response.strategy:
+                    self._log_event("teaching_strategy", {
+                        "method": response.strategy.method.value,
+                        "reason": response.strategy.reason,
+                    })
+
+                if hasattr(response, 'used_chunks') and response.used_chunks:
                     self._log_event("rag_chunks_used", {
                         "count":   len(response.used_chunks),
                         "sources": [c.title for c in response.used_chunks],
                     })
+
+                # Выполняем команды доски из ответа
+                if hasattr(response, 'board_commands') and response.board_commands:
+                    for cmd in response.board_commands:
+                        self._log_event("board_action", {"command": cmd})
+                        self._publish('board_action', {'command': cmd})
+                        if self._board:
+                            await self._board.execute(cmd)
+
             except Exception as e:
                 logger.error("[runner %s] LLM ошибка: %s", self.lesson.id, e)
                 reply = "Хороший вопрос, давай вернёмся к нему чуть позже."
@@ -305,8 +433,13 @@ class LessonRunner:
     # Ответ на вопрос по ходу сценария
     # ──────────────────────────────────────────────────────────────────────
 
-    async def _listen_and_respond(self) -> None:
+    async def _listen_and_respond(self) -> Optional[TutorResponse]:
+        """
+        Слушаем ответ ученика и реагируем.
+        Возвращает TutorResponse для адаптации темпа урока.
+        """
         heard = False
+        last_response = None
 
         async for phrase in self._asr.listen(self._vcs, timeout=LISTEN_TIMEOUT):
             if not phrase.strip():
@@ -324,7 +457,42 @@ class LessonRunner:
 
             try:
                 response = await self._llm.respond(phrase)
+
+                # Логируем дополнительную информацию
+                if hasattr(response, 'intent') and response.intent:
+                    self._log_event("intent_classified", {
+                        "type": response.intent.type.value,
+                        "confidence": response.intent.confidence,
+                    })
+                if hasattr(response, 'strategy') and response.strategy:
+                    self._log_event("teaching_strategy", {
+                        "method": response.strategy.method.value,
+                        "reason": response.strategy.reason,
+                    })
+                if hasattr(response, 'understanding') and response.understanding:
+                    self._log_event("understanding_level", {
+                        "level": response.understanding.value,
+                    })
+
+                # Выполняем команды доски из ответа
+                if hasattr(response, 'board_commands') and response.board_commands:
+                    for cmd in response.board_commands:
+                        self._log_event("board_action", {"command": cmd, "step": self.session.current_step})
+                        self._publish('board_action', {'command': cmd, 'step': self.session.current_step})
+                        if self._board:
+                            await self._board.execute(cmd)
+
                 await self._speak(response.text)
+                last_response = response
+
+                # Генерируем дополнительную задачу при ошибках
+                if hasattr(self._llm, 'generate_practice_if_needed'):
+                    practice = await self._llm.generate_practice_if_needed()
+                    if practice:
+                        self._log_event("practice_exercise", {"text": practice})
+                        self._publish('practice_exercise', {'text': practice})
+                        await self._speak(practice)
+
             except Exception as e:
                 logger.error("[runner %s] LLM ошибка: %s", self.lesson.id, e)
                 await self._speak("Хорошо, продолжаем.")
@@ -333,6 +501,8 @@ class LessonRunner:
 
         if not heard:
             await self._speak("Хорошо, двигаемся дальше.")
+
+        return last_response
 
     # ──────────────────────────────────────────────────────────────────────
     # TTS
@@ -374,17 +544,18 @@ class LessonRunner:
                 else:
                     raise
 
-    async def _listen_and_respond_with_reconnect(self) -> None:
+    async def _listen_and_respond_with_reconnect(self) -> Optional[TutorResponse]:
         """_listen_and_respond с переподключением."""
         try:
-            await self._listen_and_respond()
+            return await self._listen_and_respond()
         except Exception as e:
             if self._is_connection_error(e):
                 logger.warning("[runner %s] Потеря соединения при listening: %s", self.lesson.id, e)
                 if await self._reconnect_vcs():
-                    await self._listen_and_respond()
+                    return await self._listen_and_respond()
                 else:
                     raise
+        return None
 
     async def _free_dialog_with_reconnect(self, timeout: float = 60.0) -> None:
         """_free_dialog с переподключением."""
@@ -508,6 +679,12 @@ class LessonRunner:
             self.session.dialog_history = self._dialog
             self.session.event_log      = self._events
 
+        # Сохраняем сводку урока в сессию
+        await self._save_lesson_summary()
+
+        # Сохраняем прогресс ученика для следующего урока
+        await self._save_student_progress()
+
         # Отправить домашнее задание
         try:
             hw_ok = await deliver_homework(self.db, self.lesson)
@@ -564,6 +741,21 @@ class LessonRunner:
             lines.append(f"[{m['ts']}] {role}: {m['text']}")
         return "\n".join(lines)
 
+    def _load_teaching_style(self) -> str:
+        """Загрузить кастомный стиль преподавания из профиля."""
+        try:
+            from src.models.training import TeachingProfile
+            profile = self.db.query(TeachingProfile).filter(
+                TeachingProfile.teacher_id == self.lesson.teacher_id
+            ).first()
+            if profile and profile.custom_prompt:
+                logger.info("[runner %s] Загружен профиль стиля: %d видео, %d мин",
+                            self.lesson.id, profile.videos_count, profile.total_duration_min)
+                return profile.custom_prompt
+        except Exception as e:
+            logger.debug("[runner %s] Не удалось загрузить профиль стиля: %s", self.lesson.id, e)
+        return ""
+
     async def _mark_failed(self, reason: str) -> None:
         if self.session:
             self.session.status        = SessionStatus.FAILED
@@ -594,3 +786,107 @@ class LessonRunner:
                         self.lesson.id, key, len(wav_data) / 32000)
         except Exception as e:
             logger.error("[runner %s] Ошибка сохранения записи в S3: %s", self.lesson.id, e)
+
+    async def _load_student_progress(self) -> None:
+        """Загрузить прогресс ученика из предыдущих уроков."""
+        if not hasattr(self._llm, 'get_student_model'):
+            return
+
+        student = self.lesson.student
+        if not student:
+            return
+
+        try:
+            # Ищем последний прогресс этого ученика
+            progress = (
+                self.db.query(StudentProgress)
+                .filter(StudentProgress.student_id == student.id)
+                .order_by(StudentProgress.created_at.desc())
+                .first()
+            )
+
+            if progress and progress.student_model_snapshot:
+                student_model = self._llm.get_student_model()
+                # Восстанавливаем агрегаты из сохранённого прогресса
+                snapshot = progress.student_model_snapshot
+                student_model.total_correct = snapshot.get("total_correct", 0)
+                student_model.total_incorrect = snapshot.get("total_incorrect", 0)
+                student_model.overall_confidence = snapshot.get("overall_confidence", 0.5)
+                student_model.weak_topics = snapshot.get("weak_topics", [])
+                student_model.strong_topics = snapshot.get("strong_topics", [])
+                student_model.common_errors = snapshot.get("common_errors", [])
+                student_model.total_clarifications = snapshot.get("total_clarifications", 0)
+                student_model.total_questions = snapshot.get("total_questions", 0)
+
+                logger.info(
+                    "[runner %s] Загружен прогресс ученика: correct=%d incorrect=%d confidence=%.2f weak=%s",
+                    self.lesson.id, student_model.total_correct, student_model.total_incorrect,
+                    student_model.overall_confidence, student_model.weak_topics,
+                )
+            else:
+                logger.info("[runner %s] Предыдущий прогресс ученика не найден", self.lesson.id)
+
+        except Exception as e:
+            logger.warning("[runner %s] Ошибка загрузки прогресса ученика: %s", self.lesson.id, e)
+
+    async def _save_student_progress(self) -> None:
+        """Сохранить прогресс ученика для следующего урока."""
+        if not hasattr(self._llm, 'get_student_model'):
+            return
+
+        student = self.lesson.student
+        if not student:
+            return
+
+        try:
+            student_model = self._llm.get_student_model()
+            snapshot = student_model.to_dict()
+
+            progress = StudentProgress(
+                student_id=student.id,
+                lesson_id=self.lesson.id,
+                total_correct=student_model.total_correct,
+                total_incorrect=student_model.total_incorrect,
+                overall_confidence=student_model.overall_confidence,
+                weak_topics=student_model.weak_topics,
+                strong_topics=student_model.strong_topics,
+                common_errors=student_model.common_errors,
+                recommendations=self._llm.get_recommendations(),
+                student_model_snapshot=snapshot,
+            )
+            self.db.add(progress)
+            self.db.commit()
+
+            logger.info(
+                "[runner %s] Прогресс ученика сохранён: correct=%d incorrect=%d",
+                self.lesson.id, student_model.total_correct, student_model.total_incorrect,
+            )
+        except Exception as e:
+            logger.error("[runner %s] Ошибка сохранения прогресса ученика: %s", self.lesson.id, e)
+
+    async def _save_lesson_summary(self) -> None:
+        """Сохранить сводку урока в lesson_sessions.summary."""
+        if not self.session:
+            return
+        if not hasattr(self._llm, 'get_student_model'):
+            return
+
+        try:
+            student_model = self._llm.get_student_model()
+            topic_name = self.lesson.topic.name if self.lesson.topic else "химии"
+            raw_script = (self.lesson.topic.lesson_script or []) if self.lesson.topic else []
+            key_concepts = []
+            for step in raw_script:
+                key_concepts.extend(step.get("key_concepts", []))
+
+            summary = generate_lesson_summary(
+                student_model=student_model,
+                topic_name=topic_name,
+                topics_covered=list(dict.fromkeys(key_concepts))[:10],
+                steps_completed=self.session.current_step or 0,
+                total_steps=self.session.total_steps or 0,
+            )
+            self.session.summary = format_summary_for_db(summary)
+            logger.info("[runner %s] Сводка урока сохранена в сессию", self.lesson.id)
+        except Exception as e:
+            logger.warning("[runner %s] Ошибка сохранения сводки: %s", self.lesson.id, e)

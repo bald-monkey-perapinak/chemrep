@@ -45,6 +45,9 @@ class LessonSession(Base):
     # Лог событий (шаги, вопросы, действия на доске)
     event_log = Column(JSONB, default=list)
 
+    # Сводка урока (JSONB — LessonSummary.to_dict())
+    summary = Column(JSONB, nullable=True)
+
     # Технические метрики
     bot_joined_at = Column(DateTime(timezone=True), nullable=True)
     bot_left_at = Column(DateTime(timezone=True), nullable=True)

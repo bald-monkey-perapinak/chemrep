@@ -61,7 +61,6 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
       - BOARD_WS_URL=ws://whiteboard:3001
-      - BOARD_STUB_MODE=true
     depends_on:
       backend:
         condition: service_started

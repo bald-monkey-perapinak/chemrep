@@ -14,7 +14,7 @@ from src.db.base import Base  # noqa
 
 # Импортируем все модели, чтобы Alembic видел их при генерации миграций
 from src.models.teacher import Teacher          # noqa
-from src.models.student import Student          # noqa
+from src.models.student import Student, StudentProgress  # noqa
 from src.models.lesson import Lesson            # noqa
 from src.models.knowledge import (              # noqa
     KnowledgeClass,
@@ -26,6 +26,7 @@ from src.models.knowledge import (              # noqa
 from src.models.session import LessonSession    # noqa
 from src.models.homework import Homework        # noqa
 from src.models.embedding import ContentEmbedding  # noqa
+from src.models.training import TrainingVideo, TeachingProfile  # noqa
 
 config = context.config
 

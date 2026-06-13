@@ -100,6 +100,7 @@ export const useStore = create((set, get) => ({
                   id: top.id,
                   type: 'topic',
                   name: top.name,
+                  lesson_script: top.lesson_script || [],
                   files: (top.files || []).map(f => ({
                     id: f.id,
                     name: f.original_name,
@@ -236,6 +237,15 @@ export const useStore = create((set, get) => ({
     }
   },
 
+  updateTopic: async (topicId, data) => {
+    try {
+      await api.updateTopic(topicId, data)
+      set(s => ({ kbTree: updateNodeFields(s.kbTree, topicId, data) }))
+    } catch (e) {
+      get().showToast('Ошибка: ' + e.message)
+    }
+  },
+
   // ── Toast ─────────────────────────────────────────────────────────────
   toast: null,
   _showToastTimer: null,
@@ -297,6 +307,14 @@ function removeFileFromNode(nodes, topicId, fileId) {
   return nodes.map(n => {
     if (n.id === topicId) return { ...n, files: (n.files || []).filter(f => f.id !== fileId) }
     if (n.children) return { ...n, children: removeFileFromNode(n.children, topicId, fileId) }
+    return n
+  })
+}
+
+function updateNodeFields(nodes, nodeId, fields) {
+  return nodes.map(n => {
+    if (n.id === nodeId) return { ...n, ...fields }
+    if (n.children) return { ...n, children: updateNodeFields(n.children, nodeId, fields) }
     return n
   })
 }

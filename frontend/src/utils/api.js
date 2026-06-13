@@ -134,4 +134,23 @@ export const api = {
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Clone failed')
     return res.json()
   },
+
+  // ── Training ───────────────────────────────────────────────────────────
+  listTrainingVideos: ()     => request('GET',    '/training/videos'),
+  getTrainingVideo:   (id)   => request('GET',    `/training/videos/${id}`),
+  deleteTrainingVideo: (id)  => request('DELETE', `/training/videos/${id}`),
+  processTrainingVideo: (id) => request('POST',   `/training/videos/${id}/process`),
+  uploadTrainingVideo: async (file) => {
+    const token = getToken()
+    const form  = new FormData()
+    form.append('file', file)
+    const res = await fetch(`${BASE}/training/videos`, {
+      method:  'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body:    form,
+    })
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || 'Upload failed')
+    return res.json()
+  },
+  getTeachingProfile: ()    => request('GET',    '/training/profile'),
 }

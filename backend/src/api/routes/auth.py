@@ -24,7 +24,23 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 # ── Конфиг JWT ────────────────────────────────────────────────────────────
 import os
-SECRET_KEY      = os.getenv("JWT_SECRET", "change-me-in-production-please")
+import secrets
+
+def _get_jwt_secret() -> str:
+    """Получить JWT секрет. В продакшене ОБЯЗАТЕЛЬНО задать JWT_SECRET."""
+    secret = os.getenv("JWT_SECRET", "")
+    if not secret:
+        # Генерируем при первом запуске (для dev) — в prod перезапись!
+        secret = secrets.token_hex(32)
+        os.environ["JWT_SECRET"] = secret
+        import logging
+        logging.getLogger(__name__).warning(
+            "[AUTH] JWT_SECRET не задан! Сгенерирован временный ключ. "
+            "В продакшене задайте JWT_SECRET в .env!"
+        )
+    return secret
+
+SECRET_KEY      = _get_jwt_secret()
 ALGORITHM       = "HS256"
 TOKEN_EXPIRE_H  = 24 * 7   # 7 дней
 

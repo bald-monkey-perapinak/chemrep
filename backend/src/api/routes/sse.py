@@ -42,8 +42,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sse", tags=["sse"])
 
 HEARTBEAT_INTERVAL = 15   # секунд
-SECRET_KEY  = os.getenv("JWT_SECRET", "change-me-in-production-please")
 ALGORITHM   = "HS256"
+
+def _get_jwt_secret() -> str:
+    secret = os.getenv("JWT_SECRET", "")
+    if not secret:
+        import secrets
+        secret = secrets.token_hex(32)
+        os.environ["JWT_SECRET"] = secret
+    return secret
+
+SECRET_KEY = _get_jwt_secret()
 
 
 # ── Auth через query-параметр (EventSource не поддерживает заголовки) ─────

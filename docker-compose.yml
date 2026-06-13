@@ -1,5 +1,8 @@
 version: '3.9'
 
+# Оптимальный стек: Gemini Flash + Piper TTS + Whisper + all-MiniLM-L6-v2
+# Стоимость: ~$26/мес при 3 уроках/день
+
 services:
   nginx:
     build: ./nginx
@@ -41,11 +44,20 @@ services:
       - DATABASE_URL=postgresql://chemrep:password@postgres:5432/chemrep
       - S3_ENDPOINT=http://minio:9000
       - S3_BUCKET=chemrep-files
+      - EMBEDDING_MODEL=all-MiniLM-L6-v2
+      - JWT_SECRET=${JWT_SECRET}
+      - CORS_ORIGINS=${CORS_ORIGINS}
     depends_on:
       postgres:
         condition: service_healthy
       minio:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     deploy:
       resources:
         limits:
@@ -58,9 +70,17 @@ services:
       dockerfile: bot/Dockerfile
     environment:
       - DATABASE_URL=postgresql://chemrep:password@postgres:5432/chemrep
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - TTS_ENGINE=piper
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - ASR_MODEL_SIZE=base
+      - ASR_LANGUAGE=ru
       - BOARD_WS_URL=ws://whiteboard:3001
+      - BOARD_STUB_MODE=false
+      - JWT_SECRET=${JWT_SECRET}
+      - CORS_ORIGINS=${CORS_ORIGINS}
     depends_on:
       backend:
         condition: service_started
@@ -68,11 +88,17 @@ services:
         condition: service_healthy
       whiteboard:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     deploy:
       resources:
         limits:
-          memory: 1536M
-          cpus: '1.0'
+          memory: 2G
+          cpus: '1.5'
 
   whiteboard:
     build: ./whiteboard

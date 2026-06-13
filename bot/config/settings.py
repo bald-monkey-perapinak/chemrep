@@ -1,5 +1,7 @@
 """
-Конфигурация бота — читается из переменных окружения.
+Конфигурация бота — оптимальный стек (цена/качество).
+
+Читается из переменных окружения.
 """
 
 import os
@@ -31,23 +33,45 @@ class Config:
     )
 
     # ── VCS / Playwright ───────────────────────────────────────────────────
-    # false  — использовать реальные Zoom/Yandex клиенты (нужен playwright)
-    # true   — всегда использовать StubVCSClient (для CI, dev без браузера)
     vcs_stub_mode: bool = field(
         default_factory=lambda: os.getenv("VCS_STUB_MODE", "false").lower() == "true"
     )
-    # Таймаут подключения к конференции (секунды)
     vcs_connect_timeout: int = field(
         default_factory=lambda: int(os.getenv("VCS_CONNECT_TIMEOUT", "60"))
     )
 
-    # ── Внешние сервисы ────────────────────────────────────────────────────
+    # ── LLM (приоритет: Gemini → DeepSeek → Claude → Template) ────────────
+    gemini_api_key: str = field(
+        default_factory=lambda: os.getenv("GEMINI_API_KEY", "")
+    )
+    deepseek_api_key: str = field(
+        default_factory=lambda: os.getenv("DEEPSEEK_API_KEY", "")
+    )
     anthropic_api_key: str = field(
         default_factory=lambda: os.getenv("ANTHROPIC_API_KEY", "")
+    )
+
+    # ── TTS (приоритет: Piper → Silero → ElevenLabs) ──────────────────────
+    tts_engine: str = field(
+        default_factory=lambda: os.getenv("TTS_ENGINE", "")  # piper | silero | ""
     )
     elevenlabs_api_key: str = field(
         default_factory=lambda: os.getenv("ELEVENLABS_API_KEY", "")
     )
+
+    # ── ASR ────────────────────────────────────────────────────────────────
+    asr_model_size: str = field(
+        default_factory=lambda: os.getenv("ASR_MODEL_SIZE", "base")
+    )
+    asr_language: str = field(
+        default_factory=lambda: os.getenv("ASR_LANGUAGE", "ru")
+    )
+
+    # ── Embeddings ─────────────────────────────────────────────────────────
+    embedding_model: str = field(
+        default_factory=lambda: os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+    )
+
     # ── Доска (WebSocket whiteboard) ───────────────────────────────────────
     board_ws_url: str = field(
         default_factory=lambda: os.getenv("BOARD_WS_URL", "ws://whiteboard:3001")

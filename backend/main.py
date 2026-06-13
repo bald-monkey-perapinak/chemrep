@@ -39,9 +39,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# CORS — разрешённые домены (через запятую в CORS_ORIGINS)
+_cors_origins_str = os.getenv(
+    "CORS_ORIGINS",
+    "http://localhost:3000,http://localhost:5173,https://chemrep.local"
+)
+_cors_origins = [o.strip() for o in _cors_origins_str.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173", "https://localhost", "https://chemrep.local"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -52,7 +59,7 @@ app.add_middleware(RateLimitMiddleware, max_requests=30, window_seconds=60)
 
 @app.get("/health", tags=["system"])
 async def health():
-    return {"status": "ok", "version": "0.1.0"}
+    return {"status": "ok", "version": "0.3.0"}
 
 
 app.include_router(auth_router,      prefix="/api")

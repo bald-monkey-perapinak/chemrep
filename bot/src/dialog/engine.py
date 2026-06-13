@@ -1,22 +1,26 @@
 """
-LLM Dialog Engine — диалоговый движок на базе Claude API.
+LLM Dialog Engine — гибридный диалоговый движок.
 
-Отвечает за:
-  1. Формирование system prompt с контекстом урока и найденными RAG-фрагментами
-  2. Ведение истории диалога (messages list для Claude API)
-  3. Генерацию ответов на вопросы ученика
-  4. Оценку понимания ученика и адаптацию объяснений
-  5. Контроль выхода за рамки темы
+Стратегия (оптимизация цена/качество):
+  1. Шаблонные ответы для базовых фраз — $0
+  2. Gemini Flash для большинства вопросов — $0.01/урок
+  3. DeepSeek для сложных вопросов — $0.02/урок
+  4. Claude Haiku (опционально) — $0.10/урок
 
 Режимы работы:
-  - Реальный: Claude API (ANTHROPIC_API_KEY задан)
-  - Заглушка: StubDialogEngine (LLM_STUB_MODE=true или нет ключа)
+  - LLM_STUB_MODE=true → StubDialogEngine
+  - GEMINI_API_KEY задан → GeminiFlashEngine (приоритет)
+  - DEEPSEEK_API_KEY задан → DeepSeekEngine
+  - ANTHROPIC_API_KEY задан → ClaudeDialogEngine
+  - нет ключей → TemplateDialogEngine (шаблоны)
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
+import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional
@@ -27,87 +31,101 @@ from src.dialog.retriever import RAGRetriever, RetrievedChunk
 
 logger = logging.getLogger(__name__)
 
-# Модель Claude для диалога (быстрая, низкая задержка)
-CLAUDE_MODEL    = "claude-haiku-4-5-20251001"
-MAX_TOKENS      = 800    # подробные объяснения требуют больше токенов
-API_URL         = "https://api.anthropic.com/v1/messages"
-API_VERSION     = "2023-06-01"
+MAX_TOKENS = 800
 
-# Системный промпт — роль и правила поведения бота
+# ──────────────────────────────────────────────────────────────────────────
+# Шаблонные ответы для базовых фраз ($0)
+# ──────────────────────────────────────────────────────────────────────────
+
+TEMPLATE_RESPONSES = {
+    "greeting": [
+        "Здравствуйте! Рада тебя видеть.",
+        "Привет! Как дела?",
+    ],
+    "positive": [
+        "Отлично! Молодец!",
+        "Правильно! Ты на правильном пути.",
+        "Именно так! Запомни это.",
+        "Верно! Как ты к этому пришёл?",
+    ],
+    "encouragement": [
+        "Хороший вопрос! Давай разберёмся.",
+        "Не переживай, это нормально. Продолжаем.",
+        "Ты близко! Давай попробуем ещё раз.",
+    ],
+    "transition": [
+        "Хорошо, двигаемся дальше.",
+        "Продолжаем наш урок.",
+        "Теперь давай посмотрим на следующее.",
+    ],
+    "closing": [
+        "Отлично! Урок завершён. Если остались вопросы — задавай.",
+        "Молодец! Сегодня мы многое разобрали.",
+    ],
+}
+
+# Паттерны для определения типа фразы
+GREETING_PATTERNS = ["привет", "здравствуй", "добрый", "день", "вечер"]
+POSITIVE_PATTERNS = ["да", "понял", "ясно", "ага", "угу", "точно", "понятно", "спасибо"]
+ENCOURAGEMENT_PATTERNS = ["не знаю", "не понял", "сложно", "не получается", "объясни"]
+TRANSITION_PATTERNS = ["продолжай", "давай", "идём", "далее", "следующий"]
+CLOSING_PATTERNS = ["пока", "до свидания", "всё", "закончили", "хватит"]
+
+
+def _detect_template_type(text: str) -> Optional[str]:
+    """Определить тип шаблонной фразы."""
+    text_lower = text.lower().strip()
+
+    for pattern in GREETING_PATTERNS:
+        if pattern in text_lower:
+            return "greeting"
+
+    for pattern in POSITIVE_PATTERNS:
+        if text_lower.startswith(pattern) or text_lower == pattern:
+            return "positive"
+
+    for pattern in ENCOURAGEMENT_PATTERNS:
+        if pattern in text_lower:
+            return "encouragement"
+
+    for pattern in TRANSITION_PATTERNS:
+        if text_lower.startswith(pattern):
+            return "transition"
+
+    for pattern in CLOSING_PATTERNS:
+        if text_lower.startswith(pattern):
+            return "closing"
+
+    return None
+
+
+def _get_template_response(text: str) -> Optional[str]:
+    """Получить шаблонный ответ если фраза типовая."""
+    template_type = _detect_template_type(text)
+    if template_type and template_type in TEMPLATE_RESPONSES:
+        return random.choice(TEMPLATE_RESPONSES[template_type])
+    return None
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Системный промпт
+# ──────────────────────────────────────────────────────────────────────────
+
 SYSTEM_PROMPT_TEMPLATE = """\
-Ты — Алина, опытный репетитор по химии для школьников 8–11 классов. Ты ведёшь онлайн-урок через видеоконференцию. Твой голос звучит через колонку ученика, а ты пишешь на интерактивной доске рядом с его экраном.
+Ты — Алина, репетитор по химии для школьников 8–11 классов. Ты ведёшь онлайн-урок через видеоконференцию.
 
-## Твоя личность
-- Тебе 28 лет, ты окончила МХТИ им. Менделеева с красным дипломом
-- Ты преподаёшь химию 5 лет, работала и в школе, и на курсах
-- Ты добрая, терпеливая, но требовательная — не позволяешь ученику отлынивать
-- Говоришь живым языком, без канцеляризмов
-- Используешь примеры из повседневной жизни: кулинария, бытовая химия, экология
-- Иногда шутишь, но по делу — чтобы запомнилось
-- Когда ученик отвечает правильно — хвалишь по-человечески: «Отлично!», «Молодец!», «Ты точно понял!»
-- Когда ошибается — не ругаешь, а говоришь: «Почти! Давай разберёмся вместе»
+## Личность
+- Тебе 28 лет, окончила МХТИ с красным дипломом
+- Преподаёшь химию 5 лет
+- Добрая, терпеливая, но требовательная
+- Говоришь живым языком, с примерами из жизни
 
-## Структура урока
-Каждый урок состоит из шагов сценария. На каждом шаге ты:
-1. Объясняешь новый материал (2-4 предложения, голосом)
-2. При необходимости отправляешь команду на доску (формула, уравнение, схема)
-3. Даёшь ученику время осмыслить (пауза 2-3 секунды)
-4. Задаёшь проверочный вопрос или предлагаешь повторить
-5. Слушаешь ответ ученика и реагируешь
-
-## Как объяснять
-- Начинай с простого, потом усложняй (принцип лесенки)
-- Каждое новое понятие связывай с уже известным: «Помнишь мы говорили про...?»
-- Используй аналогии из жизни: «Представь, что молекула — это домик...»
-- Когда объясняешь формулу — произноси её поэлементно: «C плюс H плюс O»
-- Для органической химии описывай структуру словами: «Углерод связан с четырьмя водородами»
-- Разбивай сложные темы на микрочасти: не «все типы реакций», а сначала один тип, потом следующий
-- Если ученик растерялся — вернись на шаг назад и объясни иначе
-
-## Как вести себя на доске
-Когда на шаге урока нужно показать формулу или уравнение, ты отправляешь команду в формате JSON. Примеры:
-
-Для структурной формулы (SMILES):
-{{"type": "show_formula", "smiles": "CC(=O)O", "label": "Уксусная кислота", "x": 300, "y": 200}}
-
-Для уравнения реакции:
-{{"type": "show_equation", "equation": "CH4 + 2O2 -> CO2 + 2H2O", "label": "Горение метана", "x": 200, "y": 150}}
-
-Для текста на доске:
-{{"type": "draw_text", "text": "Определение: алканы — предельные углеводороды", "x": 100, "y": 50}}
-
-Очищать доску перед новым шагом:
-{{"type": "clear_step"}}
-
-Ты отправляешь команды на доску параллельно с объяснением — ученик видит формулу пока ты её озвучиваешь.
-Используй SMILES-нотацию для органических молекул (C = метан, CC = этан, CC(=O) = карбонильная группа).
-Для неорганических соединений используй уравнения через -> (стрелка реакции).
-
-## Работа с вопросами ученика
-- Если вопрос по теме урока — отвечай подробно, с примером
-- Если вопрос смежный (связан с химией, но не с текущей темой) — кратко ответь и вернись: «Хороший вопрос! Это из темы про... А сейчас давай вернёмся к...»
-- Если вопрос совсем не по теме — мягко отведи: «Это интересно, но давай сначала закончим эту тему, а потом вернёмся»
-- Если ученик спрашивает «зачем мне это знать» — объясни практическое применение
-- Если ученик говорит что-то неверное — не поправляй жёстко, а направь: «Ты близко, но давай уточним...»
-
-## Записи и конспект
-Веди мысленные записи о ходе урока:
-- Какие темы уже разобрали
-- Где ученик допустил ошибки (запомни, чтобы вернуться)
-- Что ученик усвоил хорошо
-- Какие вопросы задавал (чтобы не повторять)
-
-Если в конце урока остаётся время — предложи повторить то, что было сложным.
-
-## Важные правила
-- Говори только на русском языке
-- Никогда не говори что ты ИИ, нейросеть или бот — ты Алина, репетитор
-- Не придумывай факты — если не уверен, скажи «Давай проверим это»
-- Не давай информацию выше уровня ученика без предварительного объяснения
-- Используй термины, но сразу объясняй их: «Гидролиз — это реакция с участием воды»
-- Следи за временем — не затягивай одно объяснение дольше 2 минут
-- Если ученик долго молчит — напомни: «Слушаю тебя», «Можешь повторить вопрос?»
-- При ошибке в распознавании речи — переспроси вежливо
+## Правила
+- Отвечай кратко (2-4 предложения)
+- Говори только на русском
+- Никогда не говори что ты ИИ
+- Если не уверен — скажи «Давай проверим»
+- Хвали за правильные ответы, направляй при ошибках
 
 ## Контекст урока
 {topic_context}
@@ -120,13 +138,13 @@ SYSTEM_PROMPT_TEMPLATE = """\
 
 @dataclass
 class DialogMessage:
-    role: str    # "user" | "assistant"
+    role: str
     text: str
 
 
 @dataclass
 class DialogResponse:
-    text: str                          # текст для озвучки
+    text: str
     used_chunks: list[RetrievedChunk] = field(default_factory=list)
     tokens_used: int = 0
 
@@ -139,12 +157,10 @@ class BaseDialogEngine(ABC):
 
     @abstractmethod
     async def respond(self, student_text: str) -> DialogResponse:
-        """Сгенерировать ответ на реплику ученика."""
         ...
 
     @abstractmethod
     async def close(self) -> None:
-        """Освободить ресурсы."""
         ...
 
     def get_history(self) -> list[DialogMessage]:
@@ -152,11 +168,51 @@ class BaseDialogEngine(ABC):
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# Заглушка
+# Шаблонный движок ($0)
+# ──────────────────────────────────────────────────────────────────────────
+
+class TemplateDialogEngine(BaseDialogEngine):
+    """Ответы на основе шаблонов — для простых фраз без API."""
+
+    def __init__(self, retriever: Optional[RAGRetriever] = None):
+        self._retriever = retriever
+        self._history: list[DialogMessage] = []
+
+    async def respond(self, student_text: str) -> DialogResponse:
+        self._history.append(DialogMessage(role="user", text=student_text))
+
+        # Проверяем шаблон
+        template = _get_template_response(student_text)
+        if template:
+            self._history.append(DialogMessage(role="assistant", text=template))
+            return DialogResponse(text=template)
+
+        # Если не шаблон — ищем в RAG и даём базовый ответ
+        chunks = []
+        if self._retriever:
+            chunks = self._retriever.retrieve(student_text)
+
+        if chunks:
+            text = f"Хороший вопрос! Давай разберём. {chunks[0].text[:200]}"
+        else:
+            text = "Интересный вопрос! Давай вернёмся к теме урока."
+
+        self._history.append(DialogMessage(role="assistant", text=text))
+        return DialogResponse(text=text, used_chunks=chunks)
+
+    async def close(self) -> None:
+        pass
+
+    def get_history(self) -> list[DialogMessage]:
+        return list(self._history)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Stub
 # ──────────────────────────────────────────────────────────────────────────
 
 class StubDialogEngine(BaseDialogEngine):
-    """Возвращает фиксированные ответы — для тестов и LLM_STUB_MODE=true."""
+    """Заглушка для тестов."""
 
     RESPONSES = [
         "Хороший вопрос! Давай разберём это подробнее.",
@@ -169,7 +225,6 @@ class StubDialogEngine(BaseDialogEngine):
     async def respond(self, student_text: str) -> DialogResponse:
         text = self.RESPONSES[self._idx % len(self.RESPONSES)]
         self._idx += 1
-        logger.debug("[LLM-stub] respond: %r → %r", student_text[:40], text)
         return DialogResponse(text=text)
 
     async def close(self) -> None:
@@ -177,16 +232,200 @@ class StubDialogEngine(BaseDialogEngine):
 
 
 # ──────────────────────────────────────────────────────────────────────────
-# Claude API
+# Gemini Flash — основной LLM ($0.01/урок)
 # ──────────────────────────────────────────────────────────────────────────
 
-class ClaudeDialogEngine(BaseDialogEngine):
-    """
-    Диалоговый движок на Claude API с RAG-контекстом.
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+GEMINI_MODEL = "gemini-2.0-flash"
 
-    История диалога хранится в памяти (self._history) и передаётся
-    в каждый запрос — Claude не хранит состояние между вызовами.
-    """
+
+class GeminiFlashEngine(BaseDialogEngine):
+    """Движок на Gemini Flash — быстрый и дешёвый."""
+
+    def __init__(
+        self,
+        api_key: str,
+        retriever: RAGRetriever,
+        topic_context: str,
+    ):
+        self._api_key = api_key
+        self._retriever = retriever
+        self._history: list[DialogMessage] = []
+        self._system = SYSTEM_PROMPT_TEMPLATE.format(topic_context=topic_context)
+        self._client = httpx.AsyncClient(timeout=15.0)
+
+    async def respond(self, student_text: str) -> DialogResponse:
+        # 1. Шаблонный ответ?
+        template = _get_template_response(student_text)
+        if template:
+            self._history.append(DialogMessage(role="user", text=student_text))
+            self._history.append(DialogMessage(role="assistant", text=template))
+            return DialogResponse(text=template)
+
+        # 2. RAG поиск
+        chunks = self._retriever.retrieve(student_text) if self._retriever else []
+        rag_block = _format_rag_context(chunks)
+
+        user_content = student_text
+        if rag_block:
+            user_content = f"{student_text}\n\n[Контекст]\n{rag_block}"
+
+        self._history.append(DialogMessage(role="user", text=student_text))
+
+        # 3. Формируем промпт
+        recent = self._history[-10:]
+        contents = []
+        for msg in recent:
+            role = "user" if msg.role == "user" else "model"
+            contents.append({"role": role, "parts": [{"text": msg.text}]})
+
+        # 4. Запрос к Gemini
+        url = GEMINI_API_URL.format(model=GEMINI_MODEL)
+        payload = {
+            "system_instruction": {"parts": [{"text": self._system}]},
+            "contents": contents,
+            "generationConfig": {
+                "maxOutputTokens": MAX_TOKENS,
+                "temperature": 0.7,
+            },
+        }
+
+        try:
+            resp = await self._client.post(
+                url,
+                params={"key": self._api_key},
+                json=payload,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            logger.error("[Gemini] Ошибка: %s", e)
+            return DialogResponse(text="Позволь секунду подумать...")
+
+        # 5. Извлекаем ответ
+        reply_text = _extract_gemini_reply(data)
+        self._history.append(DialogMessage(role="assistant", text=reply_text))
+
+        logger.info("[Gemini] Ответ: %s", reply_text[:80])
+        return DialogResponse(text=reply_text, used_chunks=chunks)
+
+    async def close(self) -> None:
+        await self._client.aclose()
+
+    def get_history(self) -> list[DialogMessage]:
+        return list(self._history)
+
+
+def _extract_gemini_reply(data: dict) -> str:
+    """Извлечь текст из ответа Gemini API."""
+    try:
+        candidates = data.get("candidates", [])
+        if not candidates:
+            return "Не могу ответить."
+        content = candidates[0].get("content", {})
+        parts = content.get("parts", [])
+        texts = [p.get("text", "") for p in parts if "text" in p]
+        return " ".join(texts).strip() or "Давай продолжим урок."
+    except Exception:
+        return "Давай продолжим урок."
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# DeepSeek — для сложных вопросов ($0.02/урок)
+# ──────────────────────────────────────────────────────────────────────────
+
+DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
+DEEPSEEK_MODEL = "deepseek-chat"
+
+
+class DeepSeekEngine(BaseDialogEngine):
+    """Движок на DeepSeek — высокое качество для сложных вопросов."""
+
+    def __init__(
+        self,
+        api_key: str,
+        retriever: RAGRetriever,
+        topic_context: str,
+    ):
+        self._api_key = api_key
+        self._retriever = retriever
+        self._history: list[DialogMessage] = []
+        self._system = SYSTEM_PROMPT_TEMPLATE.format(topic_context=topic_context)
+        self._client = httpx.AsyncClient(
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            timeout=20.0,
+        )
+
+    async def respond(self, student_text: str) -> DialogResponse:
+        # Шаблонный ответ?
+        template = _get_template_response(student_text)
+        if template:
+            self._history.append(DialogMessage(role="user", text=student_text))
+            self._history.append(DialogMessage(role="assistant", text=template))
+            return DialogResponse(text=template)
+
+        # RAG поиск
+        chunks = self._retriever.retrieve(student_text) if self._retriever else []
+        rag_block = _format_rag_context(chunks)
+
+        user_content = student_text
+        if rag_block:
+            user_content = f"{student_text}\n\n[Контекст]\n{rag_block}"
+
+        self._history.append(DialogMessage(role="user", text=student_text))
+
+        # Формируем messages
+        messages = [{"role": "system", "content": self._system}]
+        for msg in self._history[-10:]:
+            messages.append({"role": msg.role, "content": msg.text})
+
+        # Запрос к DeepSeek
+        try:
+            resp = await self._client.post(
+                DEEPSEEK_API_URL,
+                json={
+                    "model": DEEPSEEK_MODEL,
+                    "messages": messages,
+                    "max_tokens": MAX_TOKENS,
+                    "temperature": 0.7,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            logger.error("[DeepSeek] Ошибка: %s", e)
+            return DialogResponse(text="Позволь секунду подумать...")
+
+        # Извлекаем ответ
+        reply_text = data["choices"][0]["message"]["content"]
+        self._history.append(DialogMessage(role="assistant", text=reply_text))
+
+        tokens = data.get("usage", {}).get("total_tokens", 0)
+        logger.info("[DeepSeek] Ответ (%d токенов): %s", tokens, reply_text[:80])
+
+        return DialogResponse(text=reply_text, used_chunks=chunks, tokens_used=tokens)
+
+    async def close(self) -> None:
+        await self._client.aclose()
+
+    def get_history(self) -> list[DialogMessage]:
+        return list(self._history)
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# Claude API — опционально ($0.10/урок)
+# ──────────────────────────────────────────────────────────────────────────
+
+CLAUDE_MODEL = "claude-haiku-4-5-20251001"
+CLAUDE_API_URL = "https://api.anthropic.com/v1/messages"
+CLAUDE_API_VERSION = "2023-06-01"
+
+
+class ClaudeDialogEngine(BaseDialogEngine):
+    """Движок на Claude — опционально для максимального качества."""
 
     def __init__(
         self,
@@ -195,76 +434,82 @@ class ClaudeDialogEngine(BaseDialogEngine):
         topic_context: str,
         max_history_turns: int = 10,
     ):
-        self._api_key    = api_key
-        self._retriever  = retriever
-        self._history:   list[DialogMessage] = []
-        self._max_turns  = max_history_turns
-        self._system     = SYSTEM_PROMPT_TEMPLATE.format(topic_context=topic_context)
-        self._client     = httpx.AsyncClient(
+        self._api_key = api_key
+        self._retriever = retriever
+        self._history: list[DialogMessage] = []
+        self._max_turns = max_history_turns
+        self._system = SYSTEM_PROMPT_TEMPLATE.format(topic_context=topic_context)
+        self._client = httpx.AsyncClient(
             headers={
-                "x-api-key":         api_key,
-                "anthropic-version": API_VERSION,
-                "content-type":      "application/json",
+                "x-api-key": api_key,
+                "anthropic-version": CLAUDE_API_VERSION,
+                "Content-Type": "application/json",
             },
             timeout=20.0,
         )
 
     async def respond(self, student_text: str) -> DialogResponse:
-        # 1. Найти релевантные чанки RAG
-        chunks = self._retriever.retrieve(student_text)
+        # Шаблонный ответ?
+        template = _get_template_response(student_text)
+        if template:
+            self._history.append(DialogMessage(role="user", text=student_text))
+            self._history.append(DialogMessage(role="assistant", text=template))
+            return DialogResponse(text=template)
 
-        # 2. Собрать RAG-контекст как часть пользовательского сообщения
+        # RAG поиск
+        chunks = self._retriever.retrieve(student_text) if self._retriever else []
         rag_block = _format_rag_context(chunks)
+
         user_content = student_text
         if rag_block:
-            user_content = f"{student_text}\n\n[Контекст из базы знаний]\n{rag_block}"
+            user_content = f"{student_text}\n\n[Контекст]\n{rag_block}"
 
-        # 3. Добавить реплику ученика в историю
         self._history.append(DialogMessage(role="user", text=student_text))
 
-        # 4. Сформировать messages для API (только последние N пар)
-        messages = _build_messages(self._history, self._max_turns, rag_block)
+        # Формируем messages
+        recent = self._history[-(self._max_turns * 2):]
+        messages = []
+        for i, msg in enumerate(recent):
+            is_last = i == len(recent) - 1
+            if msg.role == "user" and is_last and rag_block:
+                content = f"{msg.text}\n\n[Контекст]\n{rag_block}"
+            else:
+                content = msg.text
+            messages.append({"role": msg.role, "content": content})
 
-        # 5. Вызов Claude API
+        # Запрос к Claude
         try:
             resp = await self._client.post(
-                API_URL,
+                CLAUDE_API_URL,
                 json={
-                    "model":      CLAUDE_MODEL,
+                    "model": CLAUDE_MODEL,
                     "max_tokens": MAX_TOKENS,
-                    "system":     self._system,
-                    "messages":   messages,
+                    "system": self._system,
+                    "messages": messages,
                 },
             )
             resp.raise_for_status()
             data = resp.json()
-        except httpx.HTTPStatusError as e:
-            logger.error("[LLM] HTTP %s: %s", e.response.status_code, e.response.text[:300])
-            return DialogResponse(text="Позволь секунду подумать... Можешь повторить вопрос?")
         except Exception as e:
-            logger.error("[LLM] Ошибка запроса: %s", e)
-            return DialogResponse(text="Не расслышал. Повтори, пожалуйста.")
+            logger.error("[Claude] Ошибка: %s", e)
+            return DialogResponse(text="Позволь секунду подумать...")
 
-        # 6. Извлечь текст ответа
-        reply_text = _extract_reply(data)
-        tokens     = data.get("usage", {}).get("output_tokens", 0)
-
-        logger.info("[LLM] Ответ (%d токенов): %s", tokens, reply_text[:80])
-
-        # 7. Добавить ответ бота в историю
+        # Извлекаем ответ
+        blocks = data.get("content", [])
+        texts = [b["text"] for b in blocks if b.get("type") == "text"]
+        reply_text = " ".join(texts).strip() or "Давай продолжим урок."
         self._history.append(DialogMessage(role="assistant", text=reply_text))
 
-        return DialogResponse(
-            text=reply_text,
-            used_chunks=chunks,
-            tokens_used=tokens,
-        )
+        tokens = data.get("usage", {}).get("output_tokens", 0)
+        logger.info("[Claude] Ответ (%d токенов): %s", tokens, reply_text[:80])
 
-    def get_history(self) -> list[DialogMessage]:
-        return list(self._history)
+        return DialogResponse(text=reply_text, used_chunks=chunks, tokens_used=tokens)
 
     async def close(self) -> None:
         await self._client.aclose()
+
+    def get_history(self) -> list[DialogMessage]:
+        return list(self._history)
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -280,44 +525,8 @@ def _format_rag_context(chunks: list[RetrievedChunk]) -> str:
     return "\n\n".join(parts)
 
 
-def _build_messages(
-    history: list[DialogMessage],
-    max_turns: int,
-    rag_block: str,
-) -> list[dict]:
-    """
-    Строим messages для Claude API.
-    Берём последние max_turns пар (user+assistant).
-    В последнее user-сообщение вставляем RAG-контекст.
-    """
-    # Берём последние max_turns*2 сообщений (пары user/assistant)
-    recent = history[-(max_turns * 2):]
-
-    messages = []
-    for i, msg in enumerate(recent):
-        # В последнее user-сообщение добавляем RAG
-        is_last = i == len(recent) - 1
-        if msg.role == "user" and is_last and rag_block:
-            content = f"{msg.text}\n\n[Контекст из базы знаний]\n{rag_block}"
-        else:
-            content = msg.text
-        messages.append({"role": msg.role, "content": content})
-
-    return messages
-
-
-def _extract_reply(data: dict) -> str:
-    """Извлечь текст из ответа Claude API."""
-    try:
-        blocks = data.get("content", [])
-        texts  = [b["text"] for b in blocks if b.get("type") == "text"]
-        return " ".join(texts).strip() or "Не могу ответить на этот вопрос."
-    except Exception:
-        return "Давай продолжим урок."
-
-
 # ──────────────────────────────────────────────────────────────────────────
-# Фабрика
+# Фабрика — выбор движка
 # ──────────────────────────────────────────────────────────────────────────
 
 def make_dialog_engine(
@@ -325,22 +534,44 @@ def make_dialog_engine(
     topic_context: str,
 ) -> BaseDialogEngine:
     """
-    Выбирает реализацию:
-      LLM_STUB_MODE=true или нет ANTHROPIC_API_KEY → StubDialogEngine
-      иначе → ClaudeDialogEngine
+    Выбор движка по приоритету (цена/качество):
+      1. LLM_STUB_MODE=true → StubDialogEngine
+      2. GEMINI_API_KEY → GeminiFlashEngine ($0.01/урок)
+      3. DEEPSEEK_API_KEY → DeepSeekEngine ($0.02/урок)
+      4. ANTHROPIC_API_KEY → ClaudeDialogEngine ($0.10/урок)
+      5. нет ключей → TemplateDialogEngine ($0)
     """
     if os.getenv("LLM_STUB_MODE", "false").lower() == "true":
-        logger.info("[LLM] stub-режим (LLM_STUB_MODE=true)")
+        logger.info("[LLM] stub-режим")
         return StubDialogEngine()
 
-    api_key = os.getenv("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        logger.warning("[LLM] ANTHROPIC_API_KEY не задан — используем заглушку")
-        return StubDialogEngine()
+    # Приоритет: Gemini → DeepSeek → Claude → Template
+    gemini_key = os.getenv("GEMINI_API_KEY", "")
+    if gemini_key:
+        logger.info("[LLM] Gemini Flash (модель=%s, $0.01/урок)", GEMINI_MODEL)
+        return GeminiFlashEngine(
+            api_key=gemini_key,
+            retriever=retriever,
+            topic_context=topic_context,
+        )
 
-    logger.info("[LLM] Claude API (модель=%s)", CLAUDE_MODEL)
-    return ClaudeDialogEngine(
-        api_key=api_key,
-        retriever=retriever,
-        topic_context=topic_context,
-    )
+    deepseek_key = os.getenv("DEEPSEEK_API_KEY", "")
+    if deepseek_key:
+        logger.info("[LLM] DeepSeek (модель=%s, $0.02/урок)", DEEPSEEK_MODEL)
+        return DeepSeekEngine(
+            api_key=deepseek_key,
+            retriever=retriever,
+            topic_context=topic_context,
+        )
+
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if anthropic_key:
+        logger.info("[LLM] Claude Haiku (модель=%s, $0.10/урок)", CLAUDE_MODEL)
+        return ClaudeDialogEngine(
+            api_key=anthropic_key,
+            retriever=retriever,
+            topic_context=topic_context,
+        )
+
+    logger.info("[LLM] Template engine ($0/урок) — нет API ключей")
+    return TemplateDialogEngine(retriever=retriever)

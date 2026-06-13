@@ -1,7 +1,8 @@
 """
 Embeddings Service — генерация и поиск эмбеддингов через pgvector.
 
-Используетsentence-transformers для генерации эмбеддингов локально (без API).
+Использует sentence-transformers для генерации эмбеддингов локально (без API).
+Модель: all-MiniLM-L6-v2 (22M params, 384 dim) — оптимальная по скорости/качеству.
 Хранение и поиск через PostgreSQL + pgvector.
 
 Для работы требуется:
@@ -21,8 +22,8 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 # Конфигурация
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "paraphrase-multilingual-MiniLM-L12-v2")
-EMBEDDING_DIM = 384  # Размерность для paraphrase-multilingual-MiniLM-L12-v2
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+EMBEDDING_DIM = 384  # Размерность для all-MiniLM-L6-v2
 
 # Глобальный кэш модели
 _model = None
@@ -62,7 +63,7 @@ def generate_embedding(text: str) -> Optional[list[float]]:
         return None
 
     try:
-        # Обрезаем длинный текст (модель ограничена 128 токенами)
+        # Обрезаем длинный текст (модель ограничена 256 токенами)
         truncated = text[:512]
         embedding = model.encode(truncated, normalize_embeddings=True)
         return embedding.tolist()

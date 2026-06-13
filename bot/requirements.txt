@@ -5,10 +5,10 @@ psycopg2-binary==2.9.9
 # Browser automation (VCS integration)
 playwright==1.44.0
 
-# Async HTTP (ElevenLabs TTS, Miro API)
+# Async HTTP (LLM APIs, ElevenLabs TTS)
 httpx==0.27.0
 
-# Audio conversion (MP3→PCM для ElevenLabs)
+# Audio conversion (MP3->PCM)
 pydub==0.25.1
 # + системная зависимость: apt-get install ffmpeg
 
@@ -18,17 +18,17 @@ python-dotenv==1.0.1
 # S3/MinIO (для сохранения записей уроков)
 boto3==1.35.0
 
-# ── ASR (раскомментировать на сервере) ────────────────────────────────────
-# faster-whisper==1.0.3
-# webrtcvad==2.0.10
-# numpy==1.26.4
+# ── ASR (распознавание речи) ──────────────────────────────────────────────
+faster-whisper==1.0.3
+webrtcvad==2.0.10
+numpy==1.26.4
 
-# ── TTS локальный (альтернатива ElevenLabs) ───────────────────────────────
-# torch==2.3.0          # CPU-сборка: pip install torch --index-url https://download.pytorch.org/whl/cpu
-# torchaudio==2.3.0
-
-# ── LLM ──────────────────────────────────────────────────────────────────
-httpx==0.27.0       # уже в зависимостях (ElevenLabs), используется и для Claude API
+# ── TTS (синтез речи) ─────────────────────────────────────────────────────
+# Piper TTS (быстрый, качественный, локальный)
+piper-tts==1.2.0
+# torch для Silero TTS (CPU-сборка)
+torch==2.3.0
+torchaudio==2.3.0
 
 # ── Board (WebSocket whiteboard client) ──────────────────────────────────
 websockets>=12.0

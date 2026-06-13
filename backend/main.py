@@ -30,8 +30,12 @@ from src.api.routes.training   import router as training_router
 from src.api.routes.extract    import router as extract_router
 
 
+from src.utils.logging import setup_json_logging
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    setup_json_logging()
     from src.utils.s3 import ensure_bucket
     ensure_bucket()
     yield

@@ -1,7 +1,7 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
-BACKUP_DIR="/backups"
+BACKUP_DIR="./backups"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_FILE="$BACKUP_DIR/chemrep_$TIMESTAMP.sql.gz"
 

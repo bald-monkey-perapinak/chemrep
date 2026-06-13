@@ -4,21 +4,42 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# Content that the bot should NEVER produce
+BLOCKED_PATTERNS = [
+    # Bot/AI identity disclosure
+    r"(?:я\s+)?(?:бот|ии|искусственн\w+\s+интеллект|нейросеть|ai\b|gpt|claude|chatgpt)",
+    r"(?:я\s+)?(?:робот|программа|алгоритм|модел\w+\s+языка)",
+    # Dangerous/harmful content
+    r"(?:взр[аы]в|убить|убий|насил|изнасил|самоубий|суицид)",
+    # Sexual content
+    r"(?:секс|порн|erotic|nude|интимн)",
+    # Medical advice (bot should not give)
+    r"(?:приним(?:ай|ать|аю)\s+(?:лекарств|таблетк|медикамент))",
+    # Discrimination
+    r"(?:ненавижу|гнобить|дискриминац)",
+]
+
+# Patterns indicating the bot is being asked to roleplay as something else
+ROLEPLAY_PATTERNS = [
+    r"(?:представь|притворись|сыграй|будто\s+ты)",
+    r"(?:ты\s+теперь|отныне\s+ты|забудь\s+что)",
+]
+
+# Safe fallback responses
+SAFE_RESPONSES = {
+    "identity": "Я — Алина, твой репетитор по химии. Давай продолжим урок!",
+    "dangerous": "Давай сосредоточимся на химии. Есть вопросы по теме урока?",
+    "off_topic": "Это интересно, но давай вернёмся к химии. Что ещё хочешь узнать по теме?",
+}
+
 
 class SafetyFilter:
     """Filter inappropriate content from bot responses."""
-    
+
     def __init__(self):
-        # Basic profanity list (expand as needed)
-        self.profanity_patterns = [
-            r'\b(блин|черт|дурак|идиот)\b',
-            # Add more patterns as needed
-        ]
-        self.educational_disclaimers = [
-            "Это учебный бот, а не настоящий преподаватель.",
-            "Пожалуйста, перепроверяйте важную информацию.",
-        ]
-    
+        self._violation_count = 0
+        self._max_violations = 3
+
     def check_content(self, text: str) -> dict:
         """
         Check content for safety issues.
@@ -26,36 +47,53 @@ class SafetyFilter:
         """
         issues = []
         filtered_text = text
-        
-        # Check for profanity
-        for pattern in self.profanity_patterns:
+
+        # Check for blocked patterns
+        for pattern in BLOCKED_PATTERNS:
             if re.search(pattern, text, re.IGNORECASE):
-                issues.append(f"Profanity detected: {pattern}")
-                filtered_text = re.sub(pattern, '[...]', filtered_text, flags=re.IGNORECASE)
-        
-        # Check for inappropriate content
-        inappropriate = self._check_inappropriate(text)
-        if inappropriate:
-            issues.extend(inappropriate)
-        
+                issues.append(f"Blocked content: {pattern}")
+                self._violation_count += 1
+                logger.warning("[SafetyFilter] Blocked content detected: %s", text[:100])
+
+        # Check for roleplay manipulation
+        for pattern in ROLEPLAY_PATTERNS:
+            if re.search(pattern, text, re.IGNORECASE):
+                issues.append("Roleplay manipulation attempt")
+                logger.warning("[SafetyFilter] Roleplay attempt: %s", text[:100])
+
+        # If critical violations found, return safe fallback
+        if self._violation_count >= self._max_violations:
+            return {
+                "safe": False,
+                "issues": issues,
+                "filtered_text": SAFE_RESPONSES["dangerous"],
+                "blocked": True,
+            }
+
+        if issues:
+            # Replace problematic content with safe fallback
+            filtered_text = SAFE_RESPONSES["off_topic"]
+            return {
+                "safe": False,
+                "issues": issues,
+                "filtered_text": filtered_text,
+                "blocked": False,
+            }
+
         return {
-            "safe": len(issues) == 0,
-            "issues": issues,
-            "filtered_text": filtered_text
+            "safe": True,
+            "issues": [],
+            "filtered_text": text,
+            "blocked": False,
         }
-    
-    def _check_inappropriate(self, text: str) -> list[str]:
-        """Check for other inappropriate content."""
-        issues = []
-        
-        # Check for personal attacks
-        attack_patterns = [r'ты\s+некомпетентен', r'ты\s+не\s+понимаешь']
-        for pattern in attack_patterns:
+
+    def is_safe(self, text: str) -> bool:
+        """Quick check if text is safe to produce."""
+        for pattern in BLOCKED_PATTERNS:
             if re.search(pattern, text, re.IGNORECASE):
-                issues.append("Potential personal attack detected")
-        
-        return issues
-    
-    def add_disclaimer(self, text: str) -> str:
-        """Add educational disclaimer to response."""
-        return f"{text}\n\n[Обратите внимание: это ответ учебного бота]"
+                return False
+        return True
+
+    def get_safe_response(self, context: str = "identity") -> str:
+        """Get a safe fallback response."""
+        return SAFE_RESPONSES.get(context, SAFE_RESPONSES["off_topic"])

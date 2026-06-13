@@ -44,6 +44,7 @@ from src.dialog.script_processor import process_lesson_script, ProcessedScript
 from src.dialog.lesson_summary import generate_lesson_summary, format_summary_for_tts, format_summary_for_db
 from src.board.client import make_board_client, BaseBoardClient
 from src.orchestrator.homework import deliver_homework
+from src.orchestrator.checkpoint import LessonCheckpoint
 
 # EventBus из backend — публикуем события для SSE
 import sys as _sys, os as _os
@@ -80,6 +81,8 @@ class LessonRunner:
         self._dialog: list[dict] = []
         self._events: list[dict] = []
         self._reconnect_count = 0
+        self._checkpoint = LessonCheckpoint(db)
+        self._recording_allowed = False
 
     # ──────────────────────────────────────────────────────────────────────
     # Публичный API
@@ -192,6 +195,14 @@ class LessonRunner:
 
     async def _connect_vcs(self) -> None:
         lesson = self.lesson
+
+        # Check parental consent before recording
+        if not self._check_recording_consent():
+            logger.warning(
+                "[runner %s] Нет согласия родителя на запись — запись отключена",
+                lesson.id,
+            )
+
         info   = VCSConnectionInfo(
             platform=VCSPlatformType(lesson.vcs_platform.value),
             link=lesson.vcs_link or "",
@@ -204,8 +215,9 @@ class LessonRunner:
         self.session.bot_joined_at = datetime.now(timezone.utc)
         self.db.commit()
 
-        # Начинаем запись аудио
-        self._vcs.start_recording()
+        # Начинаем запись аудио (только при наличии согласия)
+        if self._recording_allowed:
+            self._vcs.start_recording()
 
         self._log_event("bot_joined", {"link": lesson.vcs_link})
         self._publish('bot_joined', {'link': lesson.vcs_link, 'session_status': 'active'})
@@ -227,6 +239,32 @@ class LessonRunner:
         
         logger.warning(f"[runner {self.lesson.id}] Student connect timeout after {timeout}s")
         return False
+
+    def _check_recording_consent(self) -> bool:
+        """Check if parental consent exists for recording this student."""
+        try:
+            from src.models.consent import ParentalConsent
+            student = self.lesson.student
+            if not student:
+                return False
+
+            consent = self.db.query(ParentalConsent).filter(
+                ParentalConsent.student_id == student.id,
+                ParentalConsent.consent_given == True,  # noqa: E712
+                ParentalConsent.recording_allowed == True,  # noqa: E712
+            ).first()
+
+            if consent:
+                self._recording_allowed = True
+                logger.info("[runner %s] Consent found for student %s", self.lesson.id, student.id)
+                return True
+
+            self._recording_allowed = False
+            return False
+        except Exception as e:
+            logger.debug("[runner %s] Consent check failed: %s", self.lesson.id, e)
+            self._recording_allowed = False
+            return False
 
     # ──────────────────────────────────────────────────────────────────────
     # Ведение урока
@@ -288,6 +326,18 @@ class LessonRunner:
 
                 self.session.current_step = i + 1
                 self.db.commit()
+
+                # Сохраняем чекпоинт для восстановления после сбоя
+                self._checkpoint.save_checkpoint(
+                    str(self.lesson.id),
+                    step=i,
+                    state={
+                        "current_step": i,
+                        "total_steps": len(script),
+                        "consecutive_correct": getattr(self._llm, '_consecutive_correct', 0),
+                        "consecutive_incorrect": getattr(self._llm, '_consecutive_incorrect', 0),
+                    },
+                )
                 self._publish('step_started', {
                     'step': i + 1,
                     'total': len(script),
@@ -309,6 +359,10 @@ class LessonRunner:
                         self._publish('board_action', {'command': cmd, 'step': i + 1})
                         if self._board:
                             await self._board.execute(cmd)
+                    # Уведомляем если доска недоступна
+                    if self._board and hasattr(self._board, '_available') and not self._board._available:
+                        self._log_event("board_unavailable", {"step": i + 1})
+                        self._publish('board_unavailable', {'step': i + 1})
 
                 # Озвучиваем текст шага
                 if step_text:
@@ -670,12 +724,15 @@ class LessonRunner:
     async def _cleanup(self) -> None:
         now = datetime.now(timezone.utc)
 
-        # Останавливаем запись аудио и сохраняем в S3
+        # Останавливаем запись аудио и сохраняем в S3 (только при согласии)
         if self._vcs and self._vcs.connected:
             try:
-                wav_data = self._vcs.stop_recording()
-                if wav_data and len(wav_data) > 1000:  # минимум 1KB
-                    await self._save_recording(wav_data)
+                if self._recording_allowed:
+                    wav_data = self._vcs.stop_recording()
+                    if wav_data and len(wav_data) > 1000:  # минимум 1KB
+                        await self._save_recording(wav_data)
+                else:
+                    logger.info("[runner %s] Запись не сохранена — нет согласия родителя", self.lesson.id)
             except Exception as e:
                 logger.warning("[runner %s] Ошибка сохранения записи: %s", self.lesson.id, e)
 

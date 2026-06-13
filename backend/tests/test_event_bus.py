@@ -125,6 +125,10 @@ class TestEventBus:
             event = await asyncio.wait_for(q.get(), timeout=1.0)
             return event
 
-        event = asyncio.get_event_loop().run_until_complete(_run())
+        loop = asyncio.new_event_loop()
+        try:
+            event = loop.run_until_complete(_run())
+        finally:
+            loop.close()
         assert event["kind"] == "question_asked"
         assert event["data"]["question"] == "Что такое алкан?"

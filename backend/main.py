@@ -30,6 +30,7 @@ from src.api.routes.voice      import router as voice_router
 from src.api.routes.sse        import router as sse_router
 from src.api.routes.training   import router as training_router
 from src.api.routes.extract    import router as extract_router
+from src.api.routes.consent    import router as consent_router
 
 
 from src.utils.logging import setup_json_logging
@@ -94,6 +95,7 @@ app.include_router(versioned_router(voice_router))
 app.include_router(versioned_router(sse_router))
 app.include_router(versioned_router(training_router))
 app.include_router(versioned_router(extract_router))
+app.include_router(versioned_router(consent_router))
 
 
 @app.get("/api/health", tags=["system"])

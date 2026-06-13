@@ -28,26 +28,26 @@ class TestPasswordHashing:
 
 class TestJWTToken:
     def test_make_token(self):
-        from src.api.routes.auth import _make_token
+        from src.api.routes.auth import _make_access_token
 
-        token = _make_token("test-teacher-id")
+        token = _make_access_token("test-teacher-id")
         assert isinstance(token, str)
         assert len(token) > 0
 
     def test_decode_token(self):
-        from src.api.routes.auth import SECRET_KEY, ALGORITHM, _make_token
+        from src.api.routes.auth import SECRET_KEY, ALGORITHM, _make_access_token
         from jose import jwt
 
         teacher_id = "test-teacher-id"
-        token = _make_token(teacher_id)
+        token = _make_access_token(teacher_id)
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         assert payload["sub"] == teacher_id
 
     def test_token_contains_expiry(self):
-        from src.api.routes.auth import SECRET_KEY, ALGORITHM, _make_token
+        from src.api.routes.auth import SECRET_KEY, ALGORITHM, _make_access_token
         from jose import jwt
 
-        token = _make_token("test-teacher-id")
+        token = _make_access_token("test-teacher-id")
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         assert "exp" in payload
 

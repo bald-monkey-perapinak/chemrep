@@ -61,15 +61,18 @@ class Config:
 
     # ── ASR ────────────────────────────────────────────────────────────────
     asr_model_size: str = field(
-        default_factory=lambda: os.getenv("ASR_MODEL_SIZE", "base")
+        default_factory=lambda: os.getenv("ASR_MODEL_SIZE", "small")
     )
     asr_language: str = field(
         default_factory=lambda: os.getenv("ASR_LANGUAGE", "ru")
     )
+    vad_aggressiveness: int = field(
+        default_factory=lambda: int(os.getenv("VAD_AGGRESSIVENESS", "1"))
+    )
 
     # ── Embeddings ─────────────────────────────────────────────────────────
     embedding_model: str = field(
-        default_factory=lambda: os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+        default_factory=lambda: os.getenv("EMBEDDING_MODEL", "paraphrase-multilingual-MiniLM-L12-v2")
     )
 
     # ── Доска (WebSocket whiteboard) ───────────────────────────────────────

@@ -531,6 +531,38 @@ def _format_rag_context(chunks: list[RetrievedChunk]) -> str:
     return "\n\n".join(parts)
 
 
+def _build_messages(
+    history: list[DialogMessage],
+    max_turns: int = 10,
+    rag_block: str = "",
+) -> list[dict]:
+    """Build messages list for Claude API from dialog history."""
+    recent = history[-(max_turns * 2):]
+
+    messages = []
+    for i, msg in enumerate(recent):
+        is_last = i == len(recent) - 1
+
+        if msg.role == "user" and is_last and rag_block:
+            content = f"{msg.text}\n\n[Контекст]\n{rag_block}"
+        else:
+            content = msg.text
+
+        messages.append({"role": msg.role, "content": content})
+
+    return messages
+
+
+def _extract_reply(data: dict) -> str:
+    """Extract text from Claude API response."""
+    try:
+        blocks = data.get("content", [])
+        texts = [b["text"] for b in blocks if b.get("type") == "text"]
+        return " ".join(texts).strip() or "Не могу ответить."
+    except Exception:
+        return "Давай продолжим урок."
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # Фабрика — выбор движка
 # ──────────────────────────────────────────────────────────────────────────

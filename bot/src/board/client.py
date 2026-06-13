@@ -39,26 +39,52 @@ class BoardClient(BaseBoardClient):
         self._ws_url = ws_url
         self._session_id = session_id
         self._ws = None
+        self._consecutive_errors = 0
+        self._max_consecutive_errors = 5
+        self._available = True
 
     async def _ensure_connected(self):
         if self._ws is not None:
             return
         import websockets
         url = f"{self._ws_url}/rooms/{self._session_id}"
-        self._ws = await websockets.connect(url, ping_interval=20, ping_timeout=10)
-        logger.info("[board] Connected to %s", url)
+        try:
+            self._ws = await websockets.connect(url, ping_interval=20, ping_timeout=10)
+            self._consecutive_errors = 0
+            self._available = True
+            logger.info("[board] Connected to %s", url)
+        except Exception as e:
+            self._available = False
+            logger.warning("[board] Connection failed: %s", e)
+            raise
 
     async def execute(self, command: dict[str, Any]) -> None:
+        if not self._available:
+            logger.debug("[board] Unavailable, skipping command: %s", command.get("type"))
+            return
         try:
             await self._ensure_connected()
             await self._ws.send(json.dumps(command, ensure_ascii=False))
+            self._consecutive_errors = 0
         except Exception as e:
-            logger.error("[board] Send error: %s", e)
+            self._consecutive_errors += 1
             self._ws = None
+            if self._consecutive_errors >= self._max_consecutive_errors:
+                self._available = False
+                logger.error(
+                    "[board] Marked unavailable after %d consecutive errors: %s",
+                    self._consecutive_errors, e,
+                )
+            else:
+                logger.warning("[board] Send error (%d/%d): %s",
+                             self._consecutive_errors, self._max_consecutive_errors, e)
 
     async def close(self) -> None:
         if self._ws:
-            await self._ws.close()
+            try:
+                await self._ws.close()
+            except Exception:
+                pass
             self._ws = None
 
 

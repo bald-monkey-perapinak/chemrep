@@ -33,9 +33,10 @@ async def test_list_students(client, auth_token):
     )
     assert response.status_code == 200
     data = response.json()
-    assert isinstance(data, list)
-    assert len(data) >= 1
-    assert any(s["full_name"] == "List Student" for s in data)
+    students = data.get("items", data) if isinstance(data, dict) else data
+    assert isinstance(students, list)
+    assert len(students) >= 1
+    assert any(s["full_name"] == "List Student" for s in students)
 
 
 @pytest.mark.asyncio

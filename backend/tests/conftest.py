@@ -92,9 +92,9 @@ def test_teacher(db):
 
 @pytest.fixture
 def auth_token(test_teacher):
-    from src.api.routes.auth import _make_token
+    from src.api.routes.auth import _make_access_token
 
-    return _make_token(str(test_teacher.id))
+    return _make_access_token(str(test_teacher.id))
 
 
 @pytest.fixture

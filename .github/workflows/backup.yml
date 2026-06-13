@@ -1,4 +1,4 @@
-name: Database Backup
+name: Database & Files Backup
 
 on:
   schedule:
@@ -10,13 +10,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run backup
+      - name: Run database backup
         run: |
           chmod +x scripts/backup-db.sh
           ./scripts/backup-db.sh
-      - name: Upload artifact
+      - name: Backup MinIO files
+        run: |
+          mkdir -p backups/minio
+          # Export MinIO data using mc (MinIO Client)
+          # This requires MINIO_ROOT_USER and MINIO_ROOT_PASSWORD env vars
+          if command -v mc &> /dev/null; then
+            mc alias set backup http://localhost:9000 ${{ secrets.MINIO_ROOT_USER }} ${{ secrets.MINIO_ROOT_PASSWORD }}
+            mc mirror backup/chemrep-files backups/minio/ || echo "MinIO backup skipped (not accessible)"
+          else
+            echo "mc not installed, skipping MinIO backup"
+          fi
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: database-backup
-          path: backups/*.sql.gz
+          name: full-backup
+          path: |
+            backups/*.sql.gz
+            backups/minio/
           retention-days: 7

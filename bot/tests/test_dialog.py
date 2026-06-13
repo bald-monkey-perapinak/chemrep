@@ -26,7 +26,7 @@ os.environ["ASR_STUB_MODE"] = "true"
 os.environ["VCS_STUB_MODE"] = "true"
 
 from src.dialog.engine import (
-    StubDialogEngine, ClaudeDialogEngine, DialogMessage,
+    StubDialogEngine, ClaudeDialogEngine, TemplateDialogEngine, DialogMessage,
     make_dialog_engine, _format_rag_context, _build_messages, _extract_reply,
 )
 from src.dialog.retriever import (
@@ -155,11 +155,13 @@ class TestMakeDialogEngine:
         engine = make_dialog_engine(retriever=None, topic_context="тема")
         assert isinstance(engine, StubDialogEngine)
 
-    def test_no_api_key_returns_stub(self, monkeypatch):
+    def test_no_api_key_returns_template(self, monkeypatch):
         monkeypatch.setenv("LLM_STUB_MODE", "false")
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
         engine = make_dialog_engine(retriever=None, topic_context="тема")
-        assert isinstance(engine, StubDialogEngine)
+        assert isinstance(engine, TemplateDialogEngine)
 
     def test_with_api_key_returns_claude(self, monkeypatch):
         monkeypatch.setenv("LLM_STUB_MODE", "false")

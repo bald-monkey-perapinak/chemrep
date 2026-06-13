@@ -1,52 +1,104 @@
-import logging
+"""
+Chemistry Pronunciation — исправление произношения химических терминов для TTS.
+
+Проблема:
+  Piper/Silero не обучены на химических терминах и произносят их неправильно.
+  "sp3-гибридизация" → "эс-пэ-три гибридизация"
+  "ИЮПАК" → "июпак"
+  "ΔH°" → неизвестно
+
+Решение:
+  Предварительная замена проблемных терминов на phonetic-эквиваленты
+  перед отправкой в TTS.
+"""
+
+import re
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+
+# Термины, которые TTS произносит неправильно → phonetic замена
+CHEMISTRY_PRONUNCIATION: dict[str, str] = {
+    # Гибридизация
+    "sp³": "эс-пэ-три",
+    "sp2": "эс-пэ-два",
+    "sp3": "эс-пэ-три",
+    "sp": "эс-пэ",
+    "s-гибридизация": "эс-гибридизация",
+    "p-гибридизация": "пэ-гибридизация",
+    "sp-гибридизация": "эс-пэ-гибридизация",
+    "sp²-гибридизация": "эс-пэ-два гибридизация",
+    "sp³-гибридизация": "эс-пэ-три гибридизация",
+
+    # ИЮПАК
+    "ИЮПАК": "и-ю-пак",
+    "IUPAC": "ай-ю-пак",
+
+    # Нуклеофильное/электрофильное
+    "нуклеофильное": "ну-кле-о-фильное",
+    "электрофильное": "элек-тро-фильное",
+
+    # Термодинамика
+    "ΔH°": "дельта-эйч ноль",
+    "ΔG°": "дельта-джи ноль",
+    "ΔS°": "дельта-эс ноль",
+
+    # Органическая химия
+    "CH₃": "цэ-эйч-три",
+    "C₂H₅": "цэ-два-эйч-пять",
+    "COOH": "цо-о-о-эйч",
+
+    # Электрохимия
+    "pH": "пэ-эйч",
+    "pOH": "пэ-о-эйч",
+
+    # Стеклохимия
+    "SiO₂": "си-о-два",
+    "Al₂O₃": "а-аль-два-о-три",
+
+    # Частые ошибки TTS
+    "молекула": "молекула",
+    "катод": "катод",
+    "анод": "анод",
+    "катион": "ка-тион",
+    "анион": "а-нион",
+    "валентность": "ва-лент-ность",
+    "стехиометрия": "сте-хи-о-мет-рия",
+}
 
 
-class PronunciationDictionary:
-    """Custom pronunciation for chemistry terms."""
-    
-    def __init__(self):
-        self.custom_pronunciations = {
-            # Common chemistry terms with pronunciation guides
-            "спирт": "спирт",
-            "кислота": "кислота",
-            "щелочь": "щёлочь",
-            "катион": "катион",
-            "анион": "анион",
-            "оксид": "оксид",
-            "гидроксид": "гидроксид",
-            "хлорид": "хлорид",
-            "сульфат": "сульфат",
-            "нитрат": "нитрат",
-            # Abbreviations
-            "ИЮПАК": "и-ю-пак",
-            "sp3": "эс-пе-три",
-            "sp2": "эс-пе-два",
-            "sp": "эс-пе",
-            "ΔH": "дельта-аш",
-            "ΔG": "дельта-джи",
-            "ΔS": "дельта-эс",
-        }
-    
-    def get_pronunciation(self, term: str) -> Optional[str]:
-        """Get custom pronunciation for a term."""
-        return self.custom_pronunciations.get(term.lower())
-    
-    def add_pronunciation(self, term: str, pronunciation: str) -> None:
-        """Add custom pronunciation."""
-        self.custom_pronunciations[term.lower()] = pronunciation
-    
-    def apply_pronunciations(self, text: str) -> str:
-        """
-        Replace terms with custom pronunciations in text.
-        """
-        result = text
-        for term, pronunciation in self.custom_pronunciations.items():
-            # Case-insensitive replacement
-            import re
-            pattern = re.compile(re.escape(term), re.IGNORECASE)
-            result = pattern.sub(pronunciation, result)
-        
-        return result
+def fix_chemistry_pronunciation(text: str) -> str:
+    """
+    Заменить химические термины на phonetic-эквиваленты для TTS.
+
+    Args:
+        text: исходный текст
+
+    Returns:
+        текст с исправленным произношением
+    """
+    if not text:
+        return text
+
+    result = text
+
+    # Заменяем термины (порядок важен — сначала длинные)
+    for term, phonetic in sorted(
+        CHEMISTRY_PRONUNCIATION.items(),
+        key=lambda x: len(x[0]),
+        reverse=True,
+    ):
+        # Case-insensitive replacement
+        pattern = re.compile(re.escape(term), re.IGNORECASE)
+        result = pattern.sub(phonetic, result)
+
+    # Исправляем Unicode индексы
+    unicode_map = {
+        "₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4",
+        "₅": "5", "₆": "6", "₇": "7", "₈": "8", "₉": "9",
+        "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4",
+        "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9",
+    }
+    for unicode_char, ascii_char in unicode_map.items():
+        result = result.replace(unicode_char, ascii_char)
+
+    return result

@@ -207,8 +207,8 @@ class ASRPipeline:
         self,
         model_size:         str = "base",
         language:           str = "ru",
-        vad_aggressiveness: int = 2,
-        silence_ms:         int = 800,
+        vad_aggressiveness: int = 1,
+        silence_ms:         int = 900,
         max_phrase_ms:      int = 15_000,
     ):
         self._vad        = VAD(vad_aggressiveness)

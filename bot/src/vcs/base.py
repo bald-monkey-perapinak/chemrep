@@ -29,15 +29,30 @@ import logging
 from abc import abstractmethod
 from typing import Optional
 
-from playwright.async_api import (
-    async_playwright,
-    Browser,
-    BrowserContext,
-    Page,
-    Playwright,
-)
-
 from src.vcs.client import BaseVCSClient, VCSConnectionInfo
+
+# Lazy playwright import — only needed when actually connecting
+_playwright_module = None
+
+
+def _get_playwright_types():
+    global _playwright_module
+    if _playwright_module is None:
+        from playwright.async_api import (
+            async_playwright,
+            Browser,
+            BrowserContext,
+            Page,
+            Playwright,
+        )
+        _playwright_module = type('_PW', (), {
+            'async_playwright': staticmethod(async_playwright),
+            'Browser': Browser,
+            'BrowserContext': BrowserContext,
+            'Page': Page,
+            'Playwright': Playwright,
+        })()
+    return _playwright_module
 
 logger = logging.getLogger(__name__)
 
@@ -144,10 +159,10 @@ class PlaywrightVCSBase(BaseVCSClient):
 
     def __init__(self, info: VCSConnectionInfo):
         super().__init__(info)
-        self._pw:      Optional[Playwright]     = None
-        self._browser: Optional[Browser]        = None
-        self._ctx:     Optional[BrowserContext] = None
-        self._page:    Optional[Page]           = None
+        self._pw      = None
+        self._browser = None
+        self._ctx     = None
+        self._page    = None
         self._send_queue: asyncio.Queue[bytes]  = asyncio.Queue(maxsize=AUDIO_QUEUE_MAXSIZE)
         self._recv_queue: asyncio.Queue[bytes]  = asyncio.Queue(maxsize=AUDIO_QUEUE_MAXSIZE)
         self._audio_task: Optional[asyncio.Task] = None
@@ -156,7 +171,8 @@ class PlaywrightVCSBase(BaseVCSClient):
     # ── Публичный API ──────────────────────────────────────────────────────
 
     async def connect(self) -> None:
-        self._pw = await async_playwright().start()
+        pw_types = _get_playwright_types()
+        self._pw = await pw_types.async_playwright().start()
         self._browser = await self._pw.chromium.launch(
             headless=True,
             args=self._chromium_args(),

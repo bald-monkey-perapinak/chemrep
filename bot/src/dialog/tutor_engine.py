@@ -39,13 +39,15 @@ from src.dialog.student_model import StudentModel, EmotionState as StudentEmotio
 from src.dialog.emotion_processor import postprocess_response
 from src.dialog.answer_verifier import make_answer_verifier, AnswerVerifier, StubAnswerVerifier
 from src.dialog.exercise_generator import make_exercise_generator, ExerciseGenerator, StubExerciseGenerator
+from src.dialog.safety_filter import SafetyFilter
+from src.dialog.topic_guard import TopicGuard
 
 logger = logging.getLogger(__name__)
 
-# Модель Claude для диалога
-CLAUDE_MODEL = "claude-haiku-4-5-20251001"
-MAX_TOKENS = 1000  # увеличено для более развёрнутых ответов
-API_URL = "https://api.anthropic.com/v1/messages"
+# Модель Claude для диалога (конфигурируется через env)
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
+MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1000"))
+API_URL = os.getenv("ANTHROPIC_API_URL", "https://api.anthropic.com/v1/messages")
 API_VERSION = "2023-06-01"
 
 
@@ -220,6 +222,26 @@ SYSTEM_PROMPT = """\
 9. **Будь человеком** — используй "мы", "давай", "представь"
 10. **Радуйся успехам ученика** — это мотивирует
 
+## Точность химической информации
+
+**КРИТИЧЕСКИ ВАЖНО — проверяй каждую химическую формулу и факт:**
+
+- НИКОГДА не выдумывай химические формулы — используй только проверенные
+- Если не уверен в формуле или уравнении — скажи "Давай проверим это вместе"
+- Проверяй:
+  - Правильность индексов в формулах (H2O, не H2O2 для воды)
+  - Баланс уравнений реакций (одинаковое число атомов слева и справа)
+  - Правильность названий по ИЮПАК
+  - Степени окисления элементов
+  - Условия протекания реакций (температура, катализатор)
+- Типичные ошибки, которых нужно ИЗБЕГАТЬ:
+  - Путать алканы/алкены/алкины
+  - Неправильные формулы кислот (H2SO4, не HSO4)
+  - Ошибки в балансировке уравнений
+  - Неверные условия реакций (например, горение при комнатной температуре)
+- Если ученик спрашивает о сложной реакции и ты не уверена — честно скажи:
+  "Это интересный вопрос! Давай я подготовлю подробное объяснение к следующему уроку."
+
 ## Контекст текущего урока
 
 {topic_context}
@@ -325,6 +347,15 @@ class TutorDialogEngine:
         # Генератор адаптивных задач
         self._exercise_generator = make_exercise_generator()
 
+        # Фильтр безопасности для ответов
+        self._safety_filter = SafetyFilter()
+
+        # Защита темы для входящих сообщений
+        self._topic_guard = TopicGuard(
+            topic_context=topic_context[:500],
+            topic_keywords=topic_context[:200].split(),
+        )
+
         logger.info(
             "[TutorEngine] Инициализирован: student=%s grade=%d",
             student_name, student_grade,
@@ -347,6 +378,17 @@ class TutorDialogEngine:
             student_text: распознанная речь ученика
             current_step_question: вопрос текущего шага (если ученик отвечает)
         """
+        # 0. Проверка безопасности входящего сообщения
+        if self._topic_guard.is_blocked(student_text):
+            return TutorResponse(
+                text=self._safety_filter.get_safe_response("dangerous"),
+            )
+
+        # 0.5. Проверка off-topic (только если не ответ на вопрос)
+        if not current_step_question and not self._topic_guard.is_on_topic(student_text):
+            redirect = self._topic_guard.get_redirect_response()
+            return TutorResponse(text=redirect)
+
         # 1. Классифицировать намерение ученика
         last_bot_msg = self._history[-1].text if self._history else ""
         intent = self._intent_classifier.classify(
@@ -489,6 +531,12 @@ class TutorDialogEngine:
             understanding=understanding,
             strategy=strategy.method if strategy else None,
         )
+
+        # 12.5. Проверка безопасности ответа LLM
+        safety_check = self._safety_filter.check_content(reply_text)
+        if not safety_check["safe"]:
+            logger.warning("[TutorEngine] Safety filter triggered: %s", safety_check["issues"])
+            reply_text = safety_check["filtered_text"]
 
         # 13. Извлечь команды для доски из ответа
         board_commands = self._extract_board_commands(reply_text)

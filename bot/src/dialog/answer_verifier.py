@@ -25,8 +25,8 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-CLAUDE_MODEL = "claude-haiku-4-5-20251001"
-API_URL = "https://api.anthropic.com/v1/messages"
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
+API_URL = os.getenv("ANTHROPIC_API_URL", "https://api.anthropic.com/v1/messages")
 API_VERSION = "2023-06-01"
 VERIFY_TIMEOUT = 10.0  # быстрая проверка — не блокируем урок
 

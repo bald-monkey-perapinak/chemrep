@@ -123,7 +123,10 @@ class Scheduler:
         """
         Занятия, которые опоздали больше чем на missed_timeout, и для которых
         ни одна сессия не была создана — помечаем как MISSED.
+        Также обрабатываем зависшие сессии (IN_PROGRESS без активного runner).
         """
+        from src.models.session import LessonSession, SessionStatus
+
         cutoff = now - timedelta(seconds=config.missed_timeout)
         missed: list[Lesson] = (
             db.query(Lesson)
@@ -144,6 +147,29 @@ class Scheduler:
                     lesson.student.full_name if lesson.student else "—",
                     lesson.scheduled_at.isoformat(),
                 )
+            db.commit()
+
+        # Cleanup stuck IN_PROGRESS sessions that have no active runner
+        stuck_timeout = now - timedelta(seconds=config.missed_timeout * 2)
+        stuck_sessions: list[LessonSession] = (
+            db.query(LessonSession)
+            .join(Lesson)
+            .filter(
+                LessonSession.status.in_([SessionStatus.STARTING, SessionStatus.ACTIVE]),
+                LessonSession.bot_joined_at < stuck_timeout,
+            )
+            .all()
+        )
+        for session in stuck_sessions:
+            if session.lesson_id not in self._running:
+                logger.warning(
+                    "Зависшая сессия %s (урок %s) — помечаем как FAILED",
+                    session.id, session.lesson_id,
+                )
+                session.status = SessionStatus.FAILED
+                session.error_message = "Session timed out (no active runner)"
+                if session.lesson:
+                    session.lesson.status = LessonStatus.CANCELLED
             db.commit()
 
     # ──────────────────────────────────────────────────────────────────────

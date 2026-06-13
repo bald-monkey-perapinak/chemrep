@@ -31,6 +31,8 @@ from typing import Optional
 
 import httpx
 
+from src.audio.pronunciation import fix_chemistry_pronunciation
+
 logger = logging.getLogger(__name__)
 
 # Целевой аудиоформат для VCS
@@ -47,6 +49,7 @@ class BaseTTS(ABC):
     @abstractmethod
     async def synthesize(self, text: str) -> bytes:
         """Вернуть PCM 16-bit 16kHz mono."""
+        text = fix_chemistry_pronunciation(text)
         ...
 
     async def close(self) -> None:

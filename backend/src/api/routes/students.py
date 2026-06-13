@@ -11,7 +11,7 @@ DELETE /api/students/{id}     — удалить ученика
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session, joinedload
 

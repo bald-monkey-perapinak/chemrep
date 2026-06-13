@@ -13,12 +13,14 @@ _env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
 if os.path.exists(_env_path):
     load_dotenv(_env_path)
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from src.api.versioned import versioned_router
 
+from src.middleware.metrics import MetricsMiddleware
 from src.middleware.rate_limit import RateLimitMiddleware
 from src.middleware.request_id import RequestIDMiddleware
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from src.api.routes.auth      import router as auth_router
 from src.api.routes.knowledge  import router as knowledge_router
 from src.api.routes.students   import router as students_router
@@ -65,6 +67,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
+app.add_middleware(MetricsMiddleware)
 app.add_middleware(RateLimitMiddleware, max_requests=30, window_seconds=60)
 app.add_middleware(RequestIDMiddleware)
 
@@ -72,6 +75,14 @@ app.add_middleware(RequestIDMiddleware)
 @app.get("/health", tags=["system"])
 async def health():
     return {"status": "ok", "version": APP_VERSION}
+
+
+@app.get("/metrics", tags=["system"])
+async def metrics():
+    return Response(
+        content=generate_latest(),
+        media_type=CONTENT_TYPE_LATEST
+    )
 
 
 app.include_router(versioned_router(auth_router))

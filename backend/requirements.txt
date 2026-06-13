@@ -23,3 +23,6 @@ numpy>=1.26.0
 
 # pgvector support
 pgvector==0.3.6
+
+# Metrics
+prometheus-client>=0.20.0

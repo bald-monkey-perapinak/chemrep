@@ -1,0 +1,39 @@
+.skeleton-line {
+  background: linear-gradient(90deg, var(--color-bg, #f0f0f0) 25%, var(--color-border, #e0e0e0) 50%, var(--color-bg, #f0f0f0) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s infinite;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.skeleton-card {
+  padding: 20px;
+  border: 1px solid var(--color-border, #e0e0e0);
+  border-radius: 8px;
+  background: var(--color-card, #fff);
+}
+
+.skeleton-table-header {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border, #e0e0e0);
+}
+
+.skeleton-table-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border, #e0e0e0);
+}
+
+.skeleton-table-row:last-child {
+  border-bottom: none;
+}
+
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}

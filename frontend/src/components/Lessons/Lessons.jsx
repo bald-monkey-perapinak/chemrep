@@ -1,5 +1,6 @@
 import { useStore } from '../../store/useStore'
 import { fmtDt } from '../../utils/helpers'
+import { SkeletonLessons } from '../shared/Skeleton'
 
 const STATUS = {
   scheduled:   { cls: 'badge-upcoming', label: 'Запланировано' },
@@ -16,7 +17,7 @@ export default function Lessons() {
   const lessonsLoading = useStore(s => s.lessonsLoading)
 
   if (lessonsLoading) {
-    return <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>Загрузка занятий...</div>
+    return <SkeletonLessons />
   }
 
   const sorted = [...lessons].sort((a, b) => a.scheduled_at > b.scheduled_at ? -1 : 1)

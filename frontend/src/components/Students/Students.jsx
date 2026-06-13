@@ -1,16 +1,18 @@
 import { useState } from 'react'
 import { useStore } from '../../store/useStore'
 import Modal from '../shared/Modal'
+import { SkeletonStudents } from '../shared/Skeleton'
 
 export default function Students() {
   const students       = useStore(s => s.students)
+  const studentsTotal  = useStore(s => s.studentsTotal)
   const addStudent     = useStore(s => s.addStudent)
   const deleteStudent  = useStore(s => s.deleteStudent)
   const showToast      = useStore(s => s.showToast)
   const studentsLoading = useStore(s => s.studentsLoading)
 
   if (studentsLoading) {
-    return <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>Загрузка учеников...</div>
+    return <SkeletonStudents />
   }
 
   const [open, setOpen]     = useState(false)
@@ -36,7 +38,7 @@ export default function Students() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <span style={{ fontSize: 14, color: 'var(--color-text-muted)' }}>
-          {students.length} учеников
+          {studentsTotal} учеников
         </span>
         <button className="btn btn-primary btn-sm" onClick={() => setOpen(true)}>
           + Добавить ученика

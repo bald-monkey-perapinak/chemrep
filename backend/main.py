@@ -15,6 +15,7 @@ if os.path.exists(_env_path):
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from src.api.versioned import versioned_router
 
 from src.middleware.rate_limit import RateLimitMiddleware
 from src.api.routes.auth      import router as auth_router
@@ -35,17 +36,19 @@ async def lifespan(app: FastAPI):
     yield
 
 
+APP_VERSION = os.getenv("APP_VERSION", "0.4.0")
+
 app = FastAPI(
     title="ХимТьютор API",
     description="Backend для сервиса автоматизированных уроков по химии",
-    version="0.3.0",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
 # CORS — разрешённые домены (через запятую в CORS_ORIGINS)
 _cors_origins_str = os.getenv(
     "CORS_ORIGINS",
-    "http://localhost:3000,http://localhost:5173,https://chemrep.local"
+    "http://localhost:3000,http://localhost:5173"
 )
 _cors_origins = [o.strip() for o in _cors_origins_str.split(",") if o.strip()]
 
@@ -53,8 +56,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.add_middleware(RateLimitMiddleware, max_requests=30, window_seconds=60)
@@ -62,15 +65,20 @@ app.add_middleware(RateLimitMiddleware, max_requests=30, window_seconds=60)
 
 @app.get("/health", tags=["system"])
 async def health():
-    return {"status": "ok", "version": "0.3.0"}
+    return {"status": "ok", "version": APP_VERSION}
 
 
-app.include_router(auth_router,      prefix="/api")
-app.include_router(knowledge_router, prefix="/api")
-app.include_router(students_router,  prefix="/api")
-app.include_router(lessons_router,   prefix="/api")
-app.include_router(sessions_router,  prefix="/api")
-app.include_router(voice_router,     prefix="/api")
-app.include_router(sse_router,       prefix="/api")
-app.include_router(training_router,  prefix="/api")
-app.include_router(extract_router,  prefix="/api")
+app.include_router(versioned_router(auth_router))
+app.include_router(versioned_router(knowledge_router))
+app.include_router(versioned_router(students_router))
+app.include_router(versioned_router(lessons_router))
+app.include_router(versioned_router(sessions_router))
+app.include_router(versioned_router(voice_router))
+app.include_router(versioned_router(sse_router))
+app.include_router(versioned_router(training_router))
+app.include_router(versioned_router(extract_router))
+
+
+@app.get("/api/health", tags=["system"])
+async def api_health_compat():
+    return {"status": "ok", "version": APP_VERSION}

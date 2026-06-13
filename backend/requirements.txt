@@ -26,3 +26,8 @@ pgvector==0.3.6
 
 # Metrics
 prometheus-client>=0.20.0
+
+# Dev/CI
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+flake8>=7.0.0

@@ -32,3 +32,6 @@ torchaudio==2.3.0
 
 # ── Board (WebSocket whiteboard client) ──────────────────────────────────
 websockets>=12.0
+
+# Dev/CI
+pytest>=8.0.0

@@ -26,10 +26,9 @@ export function CreateNodeModal({ title, label, placeholder, existingNames, onCl
     <Modal onClose={onClose} width="360px">
       <div className="modal-header">
         <span className="modal-title">
-          <i className="ti ti-folder-plus" style={{ fontSize: 16, verticalAlign: -2, marginRight: 6 }}></i>
           {title}
         </span>
-        <button className="btn btn-sm" onClick={onClose}><i className="ti ti-x"></i></button>
+        <button className="btn btn-sm" onClick={onClose} style={{ minWidth: 24, justifyContent: 'center' }}>×</button>
       </div>
       <div className="form-group">
         <label className="form-label">{label}</label>
@@ -79,10 +78,9 @@ export function RenameNodeModal({ currentName, existingNames, onClose, onConfirm
     <Modal onClose={onClose} width="360px">
       <div className="modal-header">
         <span className="modal-title">
-          <i className="ti ti-pencil" style={{ fontSize: 16, verticalAlign: -2, marginRight: 6 }}></i>
           Переименовать
         </span>
-        <button className="btn btn-sm" onClick={onClose}><i className="ti ti-x"></i></button>
+        <button className="btn btn-sm" onClick={onClose} style={{ minWidth: 24, justifyContent: 'center' }}>×</button>
       </div>
       <div className="form-group">
         <label className="form-label">Новое название</label>
@@ -111,10 +109,9 @@ export function DeleteNodeModal({ name, onClose, onConfirm }) {
     <Modal onClose={onClose} width="360px">
       <div className="modal-header">
         <span className="modal-title" style={{ color: '#A32D2D' }}>
-          <i className="ti ti-trash" style={{ fontSize: 16, verticalAlign: -2, marginRight: 6 }}></i>
           Удалить
         </span>
-        <button className="btn btn-sm" onClick={onClose}><i className="ti ti-x"></i></button>
+        <button className="btn btn-sm" onClick={onClose} style={{ minWidth: 24, justifyContent: 'center' }}>×</button>
       </div>
       <p style={{ fontSize: 14, color: 'var(--color-text-muted)', lineHeight: 1.6, marginBottom: 4 }}>
         Удалить <strong>«{name}»</strong>?{' '}
@@ -123,7 +120,7 @@ export function DeleteNodeModal({ name, onClose, onConfirm }) {
       <div className="form-actions">
         <button className="btn" onClick={onClose}>Отмена</button>
         <button className="btn btn-danger" onClick={onConfirm}>
-          <i className="ti ti-trash"></i> Удалить
+          Удалить
         </button>
       </div>
     </Modal>

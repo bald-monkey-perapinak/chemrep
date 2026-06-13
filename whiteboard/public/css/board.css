@@ -50,58 +50,34 @@ body {
   background: #f44336;
 }
 
+#board-viewport {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+}
+
 #canvas-container {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-}
-
-#canvas {
-  width: 100%;
-  height: 100%;
-}
-
-#equations-layer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-
-#labels-layer {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
+  position: relative;
+  width: 4000px;
+  height: 4000px;
+  background: #fafaf8;
 }
 
 .board-element {
   position: absolute;
-  transition: opacity 0.3s ease, transform 0.3s ease;
-  pointer-events: none;
+  transition: opacity 0.3s ease;
 }
 
 .board-element.fade-in {
   animation: fadeIn 0.4s ease forwards;
 }
 
-.board-element.highlight {
-  filter: drop-shadow(0 0 8px #ff5722);
-}
-
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes drawPath {
-  to { stroke-dashoffset: 0; }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .formula-label {
@@ -114,24 +90,104 @@ body {
 
 .equation-block {
   position: absolute;
-  padding: 12px 20px;
-  background: rgba(255,255,255,0.95);
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
 .svg-container {
   position: absolute;
+  background: transparent !important;
 }
 
 .svg-container svg {
-  max-width: 600px;
-  max-height: 400px;
+  background: transparent !important;
 }
 
-.svg-container.animate svg * {
-  stroke-dasharray: 100;
-  stroke-dashoffset: 100;
-  animation: drawPath 0.8s ease forwards;
+.svg-container svg rect {
+  fill: transparent !important;
+}
+
+.handwritten {
+  font-family: 'Segoe Script', 'Comic Sans MS', 'cursive';
+  letter-spacing: 0.5px;
+}
+
+#draw-toolbar {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(255,255,255,0.95);
+  border-radius: 10px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+  z-index: 200;
+}
+
+#draw-toolbar button {
+  padding: 6px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+#draw-toolbar button:hover {
+  background: #f0f0f0;
+}
+
+#draw-toolbar button.active {
+  background: #333;
+  color: #fff;
+  border-color: #333;
+}
+
+#draw-toolbar input[type="color"] {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+
+#draw-toolbar input[type="range"] {
+  width: 80px;
+  cursor: pointer;
+}
+
+#nav-controls {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  z-index: 200;
+}
+
+#nav-controls button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.95);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+#nav-controls button:hover {
+  background: #e0e0e0;
 }

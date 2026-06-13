@@ -25,10 +25,13 @@ from src.api.routes.sessions   import router as sessions_router
 from src.api.routes.voice      import router as voice_router
 from src.api.routes.sse        import router as sse_router
 from src.api.routes.training   import router as training_router
+from src.api.routes.extract    import router as extract_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from src.utils.s3 import ensure_bucket
+    ensure_bucket()
     yield
 
 
@@ -70,3 +73,4 @@ app.include_router(sessions_router,  prefix="/api")
 app.include_router(voice_router,     prefix="/api")
 app.include_router(sse_router,       prefix="/api")
 app.include_router(training_router,  prefix="/api")
+app.include_router(extract_router,  prefix="/api")

@@ -39,13 +39,13 @@ export default function Students() {
           {students.length} учеников
         </span>
         <button className="btn btn-primary btn-sm" onClick={() => setOpen(true)}>
-          <i className="ti ti-plus"></i> Добавить ученика
+          + Добавить ученика
         </button>
       </div>
 
       {students.length === 0 ? (
         <div className="empty-state card">
-          <i className="ti ti-users"></i>Учеников нет
+          Учеников нет. Добавьте первого ученика.
         </div>
       ) : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -61,7 +61,7 @@ export default function Students() {
                   <td>{s.grade ? `${s.grade} класс` : '—'}</td>
                   <td>
                     <button className="btn btn-sm btn-danger" onClick={() => remove(s.id, s.full_name)}>
-                      <i className="ti ti-trash"></i>
+                      Удалить
                     </button>
                   </td>
                 </tr>
@@ -75,7 +75,7 @@ export default function Students() {
         <Modal onClose={() => setOpen(false)} width="380px">
           <div className="modal-header">
             <span className="modal-title">Новый ученик</span>
-            <button className="btn btn-sm" onClick={() => setOpen(false)}><i className="ti ti-x"></i></button>
+            <button className="btn btn-sm" onClick={() => setOpen(false)} style={{ minWidth: 24, justifyContent: 'center' }}>×</button>
           </div>
           <div className="form-group">
             <label className="form-label">Полное имя</label>

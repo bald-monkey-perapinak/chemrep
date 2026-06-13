@@ -53,7 +53,7 @@ export default function NewLessonModal({ onClose, defaultDate }) {
     <Modal onClose={onClose}>
       <div className="modal-header">
         <span className="modal-title">Новое занятие</span>
-        <button className="btn btn-sm" onClick={onClose}><i className="ti ti-x"></i></button>
+        <button className="btn btn-sm" onClick={onClose} style={{ minWidth: 24, justifyContent: 'center' }}>×</button>
       </div>
 
       <div className="form-group">

@@ -424,6 +424,24 @@ body {
 }
 .icon-btn:hover { background: rgba(0,0,0,0.07); }
 .icon-btn.del:hover { background: #FCEBEB; color: #A32D2D; }
+.tree-action-btn {
+  min-width: 20px;
+  height: 20px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-family: inherit;
+  transition: background .15s, color .15s;
+  padding: 0 2px;
+}
+.tree-action-btn:hover { background: rgba(0,0,0,0.07); color: var(--color-text); }
+.tree-action-btn.del:hover { background: #FCEBEB; color: #A32D2D; }
 .system-badge {
   font-size: 10px;
   color: var(--color-text-muted);

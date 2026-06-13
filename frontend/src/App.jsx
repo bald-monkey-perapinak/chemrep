@@ -14,12 +14,12 @@ import ErrorBoundary from './components/shared/ErrorBoundary'
 import { api } from './utils/api'
 
 const SECTIONS = [
-  { id: 'dashboard', label: 'Обзор',       icon: 'ti-layout-dashboard' },
-  { id: 'calendar',  label: 'Календарь',   icon: 'ti-calendar' },
-  { id: 'lessons',   label: 'Занятия',     icon: 'ti-book' },
-  { id: 'students',  label: 'Ученики',     icon: 'ti-users' },
-  { id: 'knowledge', label: 'База знаний', icon: 'ti-folder' },
-  { id: 'settings',  label: 'Настройки',  icon: 'ti-settings' },
+  { id: 'dashboard', label: 'Обзор',       icon: '' },
+  { id: 'calendar',  label: 'Календарь',   icon: '' },
+  { id: 'lessons',   label: 'Занятия',     icon: '' },
+  { id: 'students',  label: 'Ученики',     icon: '' },
+  { id: 'knowledge', label: 'База знаний', icon: '' },
+  { id: 'settings',  label: 'Настройки',  icon: '' },
 ]
 
 export default function App() {
@@ -81,7 +81,7 @@ export default function App() {
             <button key={s.id}
               className={`nav-item${activeSection === s.id ? ' active' : ''}`}
               onClick={() => setActiveSection(s.id)}>
-              <i className={`ti ${s.icon}`}></i> {s.label}
+              {s.label}
             </button>
           ))}
         </nav>
@@ -98,7 +98,7 @@ export default function App() {
           <span className="topbar-title">{sectionTitle}</span>
           {activeSection !== 'settings' && (
             <button className="btn btn-primary" onClick={() => openNewLesson()}>
-              <i className="ti ti-plus"></i> Новое занятие
+              Новое занятие
             </button>
           )}
         </div>

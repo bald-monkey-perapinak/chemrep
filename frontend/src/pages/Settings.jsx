@@ -6,12 +6,16 @@ export default function Settings() {
   const [profile, setProfile] = useState(null)
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
+  const [backendOk, setBackendOk] = useState(null)
 
   useEffect(() => {
     api.me().then(d => {
       setProfile(d)
       setName(d.full_name || '')
-    }).catch(() => {})
+      setBackendOk(true)
+    }).catch(() => {
+      setBackendOk(false)
+    })
   }, [])
 
   async function saveName() {
@@ -23,17 +27,34 @@ export default function Settings() {
     setSaving(false)
   }
 
+  if (backendOk === false) {
+    return (
+      <div style={{ maxWidth: 720 }}>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 15, fontWeight: 500 }}>Настройки</div>
+        </div>
+        <div className="card" style={{ textAlign: 'center', padding: 40 }}>
+          <div style={{ fontSize: 32, color: '#A32D2D', marginBottom: 12 }}>⚠</div>
+          <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 8 }}>Бэкенд недоступен</div>
+          <div style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+            Проверьте, что бэкенд запущен и доступен на <code>http://localhost:8000</code>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ maxWidth: 720 }}>
-      <div className="topbar" style={{ padding: '14px 0', borderBottom: 'none' }}>
-        <div className="topbar-title">Настройки</div>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 15, fontWeight: 500 }}>Настройки</div>
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
         {[
-          { id: 'profile', label: 'Профиль', icon: 'ti ti-user' },
-          { id: 'voice', label: 'Голос', icon: 'ti ti-microphone' },
-          { id: 'training', label: 'Обучение', icon: 'ti ti-brain' },
+          { id: 'profile', label: 'Профиль' },
+          { id: 'voice', label: 'Голос' },
+          { id: 'training', label: 'Обучение' },
         ].map(tab => (
           <button
             key={tab.id}
@@ -48,7 +69,7 @@ export default function Settings() {
       {activeTab === 'profile' && (
         <div className="card">
           <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 12 }}>
-            <i className="ti ti-user" style={{ marginRight: 8 }}></i>Профиль
+            Профиль
           </div>
           <div className="form-group">
             <label className="form-label">Имя</label>
@@ -119,7 +140,7 @@ function VoiceSection() {
   return (
     <div className="card">
       <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 12 }}>
-        <i className="ti ti-microphone" style={{ marginRight: 8 }}></i>Клонирование голоса
+        Клонирование голоса
       </div>
       <div style={{ fontSize: 13, color: 'var(--color-text-muted)', marginBottom: 16 }}>
         Загрузите 1–25 аудиофайлов с вашим голосом (MP3/WAV, суммарно от 1 минуты).
@@ -129,16 +150,15 @@ function VoiceSection() {
       {status?.has_clone ? (
         <div>
           <div style={{ fontSize: 13, marginBottom: 8, color: '#3B6D11' }}>
-            <i className="ti ti-check-circle" style={{ marginRight: 6 }}></i>
             Голос клонирован: {status.voice_id}
           </div>
           <button className="btn btn-danger btn-sm" onClick={handleDelete}>
-            <i className="ti ti-trash"></i> Удалить клон
+            Удалить клон
           </button>
         </div>
       ) : (
         <button className="btn btn-primary" onClick={handleClone} disabled={uploading}>
-          <i className="ti ti-upload"></i> {uploading ? 'Загрузка...' : 'Загрузить образцы голоса'}
+          {uploading ? 'Загрузка...' : 'Загрузить образцы голоса'}
         </button>
       )}
     </div>
@@ -227,10 +247,10 @@ function TrainingSection() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* Профиль */}
-      {profile && profile.videos_count > 0 && (
+          {profile && profile.videos_count > 0 && (
         <div className="card">
           <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 8 }}>
-            <i className="ti ti-brain" style={{ marginRight: 8 }}></i>Профиль стиля
+            Профиль стиля
           </div>
           <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 12 }}>
             Проанализировано видео: {profile.videos_count} ·{' '}
@@ -264,10 +284,10 @@ function TrainingSection() {
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ fontSize: 14, fontWeight: 500 }}>
-            <i className="ti ti-video" style={{ marginRight: 8 }}></i>Обучающие видео
+            Обучающие видео
           </div>
           <button className="btn btn-primary btn-sm" onClick={handleUpload} disabled={uploading}>
-            <i className="ti ti-upload"></i> {uploading ? 'Загрузка...' : 'Загрузить видео'}
+            {uploading ? 'Загрузка...' : 'Загрузить видео'}
           </button>
         </div>
         <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 16 }}>
@@ -277,7 +297,6 @@ function TrainingSection() {
 
         {videos.length === 0 ? (
           <div className="empty-state">
-            <i className="ti ti-video-off"></i>
             Нет загруженных видео
           </div>
         ) : (
@@ -291,7 +310,7 @@ function TrainingSection() {
                 background: 'var(--color-bg)',
                 borderRadius: 8,
               }}>
-                <i className="ti ti-video" style={{ fontSize: 20, color: 'var(--color-text-muted)' }}></i>
+                <div style={{ fontSize: 20, color: 'var(--color-text-muted)' }}>▶</div>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontSize: 13, fontWeight: 500 }}>{v.original_name}</div>
                   <div style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
@@ -310,11 +329,11 @@ function TrainingSection() {
                 <div style={{ display: 'flex', gap: 4 }}>
                   {(v.status === 'uploading' || v.status === 'failed') && (
                     <button className="btn btn-sm btn-primary" onClick={() => handleProcess(v.id)}>
-                      <i className="ti ti-player-play"></i> Обработать
+                      Обработать
                     </button>
                   )}
                   <button className="btn btn-sm btn-danger" onClick={() => handleDelete(v.id)}>
-                    <i className="ti ti-trash"></i>
+                    Удалить
                   </button>
                 </div>
               </div>

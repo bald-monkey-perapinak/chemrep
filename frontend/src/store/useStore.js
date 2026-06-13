@@ -142,25 +142,19 @@ export const useStore = create((set, get) => ({
     const parent = findNode(tree, parentId)
     if (!parent) return
 
+    const isRoot = tree.some(n => n.id === parentId)
+
     try {
-      if (parent.type === 'folder' && !parent.children?.some(c => c.type === 'folder')) {
-        const isRoot = tree.some(n => n.id === parentId)
-        if (isRoot) {
-          const sec = await api.createSection(parentId, { name })
-          const newNode = { id: sec.id, type: 'folder', name: sec.name, children: [] }
-          set(s => ({ kbTree: addChild(s.kbTree, parentId, newNode) }))
-        } else {
-          const topic = await api.createTopic(parentId, { name })
-          const newNode = { id: topic.id, type: 'topic', name: topic.name, files: [] }
-          set(s => ({ kbTree: addChild(s.kbTree, parentId, newNode) }))
-        }
+      if (isRoot) {
+        // Корневой элемент — создаём секцию (подпапку)
+        const sec = await api.createSection(parentId, { name })
+        const newNode = { id: sec.id, type: 'folder', name: sec.name, children: [] }
+        set(s => ({ kbTree: addChild(s.kbTree, parentId, newNode) }))
       } else {
-        const isRoot = tree.some(n => n.id === parentId)
-        if (!isRoot) {
-          const topic = await api.createTopic(parentId, { name })
-          const newNode = { id: topic.id, type: 'topic', name: topic.name, files: [] }
-          set(s => ({ kbTree: addChild(s.kbTree, parentId, newNode) }))
-        }
+        // Не корневой — создаём тему
+        const topic = await api.createTopic(parentId, { name })
+        const newNode = { id: topic.id, type: 'topic', name: topic.name, files: [] }
+        set(s => ({ kbTree: addChild(s.kbTree, parentId, newNode) }))
       }
     } catch (e) {
       get().showToast('Ошибка: ' + e.message)

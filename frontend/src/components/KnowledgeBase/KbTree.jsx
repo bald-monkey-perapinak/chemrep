@@ -14,7 +14,6 @@ function TreeNode({ node, depth = 0, siblingNames }) {
   const [hovered, setHovered] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [createChildOpen, setCreateChildOpen] = useState(false)
   const [createTopicOpen, setCreateTopicOpen] = useState(false)
 
   const isSelected = selectedKbNode === node.id
@@ -39,20 +38,15 @@ function TreeNode({ node, depth = 0, siblingNames }) {
         {hovered && (
           <span style={{ display: 'flex', gap: 2, marginLeft: 4 }} onClick={(e) => e.stopPropagation()}>
             {!isTopic && (
-              <>
-                <button className="icon-btn" title="Добавить папку" onClick={() => setCreateChildOpen(true)}>
-                  <i className="ti ti-folder-plus" style={{ fontSize: 12 }}></i>
-                </button>
-                <button className="icon-btn" title="Добавить тему" onClick={() => setCreateTopicOpen(true)}>
-                  <i className="ti ti-file-plus" style={{ fontSize: 12 }}></i>
-                </button>
-              </>
+              <button className="tree-action-btn" title="Добавить" onClick={() => setCreateTopicOpen(true)}>
+                +
+              </button>
             )}
-            <button className="icon-btn" title="Переименовать" onClick={() => setRenameOpen(true)}>
-              <i className="ti ti-pencil" style={{ fontSize: 12 }}></i>
+            <button className="tree-action-btn" title="Переименовать" onClick={() => setRenameOpen(true)}>
+              ...
             </button>
-            <button className="icon-btn del" title="Удалить" onClick={() => setDeleteOpen(true)}>
-              <i className="ti ti-trash" style={{ fontSize: 12 }}></i>
+            <button className="tree-action-btn del" title="Удалить" onClick={() => setDeleteOpen(true)}>
+              x
             </button>
           </span>
         )}
@@ -66,21 +60,6 @@ function TreeNode({ node, depth = 0, siblingNames }) {
           siblingNames={node.children.map((c) => c.name)}
         />
       ))}
-
-      {createChildOpen && (
-        <CreateNodeModal
-          title="Новая папка"
-          label="Название папки"
-          placeholder="Название"
-          existingNames={childNames}
-          onClose={() => setCreateChildOpen(false)}
-          onConfirm={async (name) => {
-            await addChildNode(node.id, name, 'folder')
-            setCreateChildOpen(false)
-            showToast(`Папка «${name}» создана`)
-          }}
-        />
-      )}
 
       {createTopicOpen && (
         <CreateNodeModal

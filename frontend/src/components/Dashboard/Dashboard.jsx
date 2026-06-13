@@ -64,12 +64,12 @@ export default function Dashboard() {
 
       <div className="card">
         <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-          <i className="ti ti-calendar-event"></i> Ближайшие занятия
+          Ближайшие занятия
         </div>
         <div className="upcoming-list">
           {upcoming.length === 0 ? (
             <div className="empty-state">
-              <i className="ti ti-calendar-off"></i>Нет предстоящих занятий
+              Нет предстоящих занятий
             </div>
           ) : upcoming.map(l => {
             const badge = statusBadge[l.status] || {}
@@ -88,12 +88,12 @@ export default function Dashboard() {
                   <button className="btn btn-sm" title="Следить за уроком"
                     onClick={() => window.__openMonitor?.(l.id)}
                     style={{ color: 'var(--color-accent)' }}>
-                    <i className="ti ti-broadcast"></i>
+                    Live
                   </button>
                 )}
                 {l.vcs_link && (
                   <a href={l.vcs_link} className="btn btn-sm" target="_blank" rel="noreferrer">
-                    <i className="ti ti-external-link"></i> Открыть
+                    Открыть
                   </a>
                 )}
               </div>

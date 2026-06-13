@@ -30,22 +30,20 @@ export default function KnowledgeBase() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <span style={{ fontSize: 15, fontWeight: 500 }}>
-          <i className="ti ti-books" style={{ fontSize: 18, verticalAlign: -3, marginRight: 8 }}></i>
           База знаний
         </span>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn btn-sm btn-primary" onClick={() => setCreateRootOpen(true)}>
-            <i className="ti ti-folder-plus"></i> Новая папка
+            + Новая папка
           </button>
           <button className="btn btn-sm" onClick={handleAddFile}>
-            <i className="ti ti-upload"></i> Загрузить файл
+            Загрузить файл
           </button>
         </div>
       </div>
 
       {kbTree.length === 0 ? (
         <div className="custom-empty" style={{ marginBottom: 24 }}>
-          <i className="ti ti-folder-off" style={{ fontSize: 28, display: 'block', marginBottom: 8, opacity: 0.35 }}></i>
           Нет папок. Нажмите «Новая папка», чтобы создать структуру.
         </div>
       ) : (

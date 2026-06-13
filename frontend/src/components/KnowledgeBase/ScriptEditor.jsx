@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
+import { api } from '../../utils/api'
 
 const EMPTY_STEP = {
   step: 0,
@@ -18,8 +19,164 @@ const BOARD_COMMAND_TYPES = [
   { value: 'clear_step', label: 'Очистить доску', fields: [] },
 ]
 
+const SAMPLE_SCRIPT = [
+  {
+    "step": 1,
+    "text": "Сегодня мы изучим тему...",
+    "question": "",
+    "board_commands": [],
+    "listen": false,
+    "speak_only": false,
+    "difficulty": "easy",
+    "key_concepts": []
+  },
+  {
+    "step": 2,
+    "text": "Объяснение нового материала...",
+    "question": "Можешь повторить определение?",
+    "board_commands": [{"type": "draw_text", "text": "Ключевое понятие"}],
+    "listen": true,
+    "speak_only": false,
+    "difficulty": "normal",
+    "key_concepts": ["ключевое понятие"]
+  }
+]
+
+const SAMPLE_TXT = `1. Введение в тему
+Объяснение базовых понятий. Сегодня мы разберём основные определения.
+
+2. Основной материал
+Подробное описание темы с примерами и иллюстрациями.
+
+3. Практика
+Предложите ученику решить задачу или ответить на вопрос.
+
+4. Закрепление
+Повторите ключевые моменты и подведите итоги урока.`
+
+function parseTxtToScript(text) {
+  const lines = text.split('\n').filter(l => l.trim())
+  const steps = []
+  let currentStep = null
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+
+    // Проверяем является ли строка заголовком шага
+    // Форматы: "1. ", "1) ", "Шаг 1: ", "# ", "## "
+    const stepMatch = trimmed.match(/^(?:\d+[\.\)]\s*|Шаг\s+\d+[:\s]*|#{1,2}\s+)(.+)/i)
+
+    if (stepMatch) {
+      if (currentStep) steps.push(currentStep)
+      currentStep = {
+        step: steps.length + 1,
+        text: stepMatch[1].trim(),
+        question: '',
+        board_commands: [],
+        listen: false,
+        speak_only: false,
+        difficulty: 'normal',
+        key_concepts: [],
+      }
+    } else if (currentStep) {
+      // Добавляем текст к текущему шагу
+      if (trimmed.startsWith('?') || trimmed.endsWith('?')) {
+        currentStep.question = trimmed.replace(/^\?/, '').trim()
+        currentStep.listen = true
+      } else {
+        currentStep.text = currentStep.text ? currentStep.text + ' ' + trimmed : trimmed
+      }
+    } else {
+      // Текст до первого заголовка — первый шаг
+      currentStep = {
+        step: 1,
+        text: trimmed,
+        question: '',
+        board_commands: [],
+        listen: false,
+        speak_only: false,
+        difficulty: 'normal',
+        key_concepts: [],
+      }
+    }
+  }
+
+  if (currentStep) steps.push(currentStep)
+
+  // Если шагов нет, разбиваем по пустым строкам
+  if (steps.length === 0) {
+    const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim())
+    return paragraphs.map((p, i) => ({
+      step: i + 1,
+      text: p.trim().replace(/\n/g, ' '),
+      question: '',
+      board_commands: [],
+      listen: false,
+      speak_only: false,
+      difficulty: 'normal',
+      key_concepts: [],
+    }))
+  }
+
+  return steps.map((s, i) => ({ ...s, step: i + 1 }))
+}
+
+function parseJsonToScript(data) {
+  if (!Array.isArray(data)) return null
+  if (data.length === 0) return null
+
+  for (let i = 0; i < data.length; i++) {
+    const step = data[i]
+    if (!step.text && step.text !== '') return null
+    if (step.board_commands && !Array.isArray(step.board_commands)) return null
+  }
+
+  return data.map((s, i) => ({
+    step: i + 1,
+    text: s.text || '',
+    question: s.question || '',
+    board_commands: (s.board_commands || []).map(cmd => {
+      const normalized = { type: cmd.type || 'draw_text' }
+      if (cmd.smiles) normalized.smiles = cmd.smiles
+      if (cmd.equation) normalized.equation = cmd.equation
+      if (cmd.label) normalized.label = cmd.label
+      if (cmd.text) normalized.text = cmd.text
+      if (cmd.x) normalized.x = cmd.x
+      if (cmd.y) normalized.y = cmd.y
+      return normalized
+    }),
+    listen: s.listen !== false,
+    speak_only: s.speak_only === true,
+    difficulty: ['easy', 'normal', 'hard'].includes(s.difficulty) ? s.difficulty : 'normal',
+    key_concepts: Array.isArray(s.key_concepts) ? s.key_concepts : [],
+  }))
+}
+
+function parseFileToScript(text, filename) {
+  const ext = filename.split('.').pop().toLowerCase()
+
+  if (ext === 'json') {
+    const data = JSON.parse(text)
+    const script = parseJsonToScript(data)
+    if (!script) throw new Error('JSON не содержит массив шагов с полем "text"')
+    return script
+  }
+
+  if (ext === 'txt' || ext === 'md' || ext === 'markdown' || ext === 'text') {
+    const script = parseTxtToScript(text)
+    if (script.length === 0) throw new Error('Не удалось извлечь шаги из файла')
+    return script
+  }
+
+  // PDF и DOCX обрабатываются через бэкенд
+  return null
+}
+
 export default function ScriptEditor({ script = [], onChange }) {
   const [expanded, setExpanded] = useState(null)
+  const [importing, setImporting] = useState(false)
+  const [importError, setImportError] = useState('')
+  const fileInputRef = useRef(null)
 
   function updateStep(i, patch) {
     const next = script.map((s, idx) => idx === i ? { ...s, ...patch } : s)
@@ -63,14 +220,159 @@ export default function ScriptEditor({ script = [], onChange }) {
     updateStep(stepIdx, { board_commands: cmds })
   }
 
+  function handleFileUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setImportError('')
+    setImporting(true)
+
+    const ext = file.name.split('.').pop().toLowerCase()
+    const isBinary = ['pdf', 'docx'].includes(ext)
+
+    if (isBinary) {
+      // PDF/DOCX — отправляем на бэкенд для извлечения текста
+      const formData = new FormData()
+      formData.append('file', file)
+
+      fetch('/api/extract/text', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+        },
+        body: formData,
+      })
+        .then(res => {
+          if (!res.ok) return res.json().then(d => { throw new Error(d.detail || 'Ошибка сервера') })
+          return res.json()
+        })
+        .then(data => {
+          const script = parseTxtToScript(data.text)
+          if (script.length === 0) {
+            setImportError('Не удалось извлечь шаги из файла')
+            setImporting(false)
+            return
+          }
+          if (script.length > 50) {
+            setImportError('Слишком много шагов (максимум 50)')
+            setImporting(false)
+            return
+          }
+          if (script.length > 0) {
+            if (!confirm(`Заменить текущий сценарий (${script.length} шагов) на загруженный?`)) {
+              setImporting(false)
+              return
+            }
+          }
+          onChange(script)
+          setImporting(false)
+        })
+        .catch(err => {
+          setImportError(err.message || 'Ошибка чтения файла')
+          setImporting(false)
+        })
+    } else {
+      // JSON/TXT/MD — читаем на клиенте
+      const reader = new FileReader()
+      reader.onload = (ev) => {
+        try {
+          const text = ev.target.result
+          const script = parseFileToScript(text, file.name)
+
+          if (!script) {
+            setImportError('Не удалось обработать файл')
+            setImporting(false)
+            return
+          }
+
+          if (script.length === 0) {
+            setImportError('Не удалось извлечь шаги из файла')
+            setImporting(false)
+            return
+          }
+
+          if (script.length > 50) {
+            setImportError('Слишком много шагов (максимум 50)')
+            setImporting(false)
+            return
+          }
+
+          if (script.length > 0) {
+            if (!confirm(`Заменить текущий сценарий (${script.length} шагов) на загруженный?`)) {
+              setImporting(false)
+              return
+            }
+          }
+
+          onChange(script)
+          setImporting(false)
+        } catch (err) {
+          setImportError(err.message || 'Ошибка чтения файла')
+          setImporting(false)
+        }
+      }
+      reader.readAsText(file)
+    }
+    e.target.value = ''
+  }
+
+  function downloadTemplate(format) {
+    let content, type, filename
+
+    if (format === 'json') {
+      content = JSON.stringify(SAMPLE_SCRIPT, null, 2)
+      type = 'application/json'
+      filename = 'lesson_script.json'
+    } else {
+      content = SAMPLE_TXT
+      type = 'text/plain'
+      filename = 'lesson_script.txt'
+    }
+
+    const blob = new Blob([content], { type })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="script-editor">
       <div className="script-header">
         <span style={{ fontWeight: 500 }}>Сценарий урока</span>
-        <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
-          {script.length} шагов
-        </span>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>
+            {script.length} шагов
+          </span>
+          <button className="btn btn-sm" onClick={() => downloadTemplate('json')} title="Скачать шаблон JSON">
+            JSON
+          </button>
+          <button className="btn btn-sm" onClick={() => downloadTemplate('txt')} title="Скачать шаблон TXT">
+            TXT
+          </button>
+          <button className="btn btn-sm btn-primary" onClick={() => fileInputRef.current?.click()} disabled={importing}>
+            {importing ? 'Загрузка...' : 'Импорт файла'}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json,.txt,.md,.markdown,.text,.pdf,.docx"
+            onChange={handleFileUpload}
+            style={{ display: 'none' }}
+          />
+        </div>
       </div>
+
+      {importError && (
+        <div style={{
+          padding: '8px 12px', marginBottom: 8, fontSize: 12,
+          background: '#FCEBEB', color: '#A32D2D', borderRadius: 6,
+        }}>
+          {importError}
+        </div>
+      )}
 
       <div className="script-steps">
         {script.map((step, i) => (
@@ -85,13 +387,13 @@ export default function ScriptEditor({ script = [], onChange }) {
               </span>
               <div className="step-actions" onClick={e => e.stopPropagation()}>
                 <button onClick={() => moveStep(i, -1)} disabled={i === 0} title="Вверх">
-                  <i className="ti ti-chevron-up"></i>
+                  ^
                 </button>
                 <button onClick={() => moveStep(i, 1)} disabled={i === script.length - 1} title="Вниз">
-                  <i className="ti ti-chevron-down"></i>
+                  v
                 </button>
                 <button onClick={() => removeStep(i)} title="Удалить" className="btn-danger">
-                  <i className="ti ti-trash"></i>
+                  X
                 </button>
               </div>
             </div>
@@ -160,13 +462,12 @@ export default function ScriptEditor({ script = [], onChange }) {
                   </label>
                 </div>
 
-                {/* Board commands */}
                 {!step.speak_only && (
                   <div className="board-commands">
                     <div className="board-commands-header">
                       <label>Команды доски</label>
                       <button className="btn btn-sm" onClick={() => addBoardCommand(i)}>
-                        <i className="ti ti-plus"></i> Добавить
+                        + Добавить
                       </button>
                     </div>
                     {(step.board_commands || []).map((cmd, ci) => (
@@ -225,7 +526,7 @@ export default function ScriptEditor({ script = [], onChange }) {
                           className="btn btn-sm btn-danger"
                           onClick={() => removeBoardCommand(i, ci)}
                         >
-                          <i className="ti ti-x"></i>
+                          X
                         </button>
                       </div>
                     ))}
@@ -238,7 +539,7 @@ export default function ScriptEditor({ script = [], onChange }) {
       </div>
 
       <button className="btn btn-sm btn-primary" onClick={addStep} style={{ marginTop: 8 }}>
-        <i className="ti ti-plus"></i> Добавить шаг
+        + Добавить шаг
       </button>
     </div>
   )

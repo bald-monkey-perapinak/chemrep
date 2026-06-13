@@ -105,13 +105,12 @@ export default function LessonMonitor({ lessonId, onClose }) {
           flexShrink: 0,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <i className="ti ti-broadcast" style={{ fontSize: 16, color: 'var(--color-accent)' }}></i>
             <span style={{ fontSize: 14, fontWeight: 500 }}>Мониторинг урока</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <StatusDot status={status} />
             <button className="icon-btn" onClick={onClose} title="Закрыть">
-              <i className="ti ti-x" style={{ fontSize: 14 }}></i>
+              X
             </button>
           </div>
         </div>

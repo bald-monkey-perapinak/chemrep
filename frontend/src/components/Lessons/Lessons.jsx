@@ -63,16 +63,16 @@ export default function Lessons() {
                     <button className="btn btn-sm" title="Следить за уроком"
                       onClick={() => window.__openMonitor?.(l.id)}
                       style={{ color: 'var(--color-accent)' }}>
-                      <i className="ti ti-broadcast"></i>
+                      Live
                     </button>
                   )}
                   {l.vcs_link && (
                     <a href={l.vcs_link} className="btn btn-sm" target="_blank" rel="noreferrer">
-                      <i className="ti ti-external-link"></i>
+                      Ссылка
                     </a>
                   )}
                   <button className="btn btn-sm btn-danger" onClick={() => remove(l.id)}>
-                    <i className="ti ti-trash"></i>
+                    Удалить
                   </button>
                 </td>
               </tr>

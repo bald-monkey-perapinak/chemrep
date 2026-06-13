@@ -30,7 +30,7 @@ export default function KbDetail() {
   if (!node) return (
     <div className="kb-detail">
       <div className="card">
-        <div className="empty-state"><i className="ti ti-folder"></i>Выберите папку или тему слева</div>
+        <div className="empty-state">Выберите папку или тему слева</div>
       </div>
     </div>
   )
@@ -47,7 +47,7 @@ export default function KbDetail() {
           </div>
           <div className="kb-files">
             {files.length === 0 ? (
-              <div className="empty-state"><i className="ti ti-file-off"></i>Нет файлов</div>
+              <div className="empty-state">Нет файлов</div>
             ) : files.map(f => (
               <div className="file-row" key={f.id || f.name}>
                 <i className={`ti ${fileIcon(f.name)} file-icon`}></i>
@@ -62,14 +62,14 @@ export default function KbDetail() {
                       showToast('Файл удалён')
                     } catch (e) { showToast('Ошибка: ' + e.message) }
                   }}>
-                  <i className="ti ti-trash"></i>
+                  Удалить
                 </button>
               </div>
             ))}
           </div>
           <div style={{ marginTop: 12 }}>
             <button className="btn btn-sm btn-primary" onClick={handleAddFile}>
-              <i className="ti ti-upload"></i> Загрузить файл
+              Загрузить файл
             </button>
           </div>
         </div>

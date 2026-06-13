@@ -16,15 +16,27 @@
       <span id="status-dot"></span>
       <span id="status-text">Подключение...</span>
     </div>
-    <div id="canvas-container">
-      <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div id="board-viewport">
+      <div id="canvas-container">
+        <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div id="equations-layer"></div>
+        <div id="labels-layer"></div>
+      </div>
     </div>
-    <div id="equations-layer"></div>
-    <div id="labels-layer"></div>
+    <div id="nav-controls">
+      <button id="nav-up" title="Вверх">^</button>
+      <div style="display:flex">
+        <button id="nav-left" title="Влево"><</button>
+        <button id="nav-home" title="Центр">O</button>
+        <button id="nav-right" title="Вправo">></button>
+      </div>
+      <button id="nav-down" title="Вниз">v</button>
+    </div>
   </div>
   <script src="/js/formulas.js"></script>
   <script src="/js/equations.js"></script>
   <script src="/js/mechanisms.js"></script>
   <script src="/js/board.js"></script>
+  <script src="/js/draw.js"></script>
 </body>
 </html>

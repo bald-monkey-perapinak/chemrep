@@ -81,7 +81,26 @@ app.add_middleware(RequestIDMiddleware)
 
 @app.get("/health", tags=["system"])
 async def health():
-    return {"status": "ok", "version": APP_VERSION}
+    checks = {"status": "ok", "version": APP_VERSION, "checks": {}}
+    try:
+        from src.db.base import engine
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        checks["checks"]["postgres"] = "ok"
+    except Exception as e:
+        checks["checks"]["postgres"] = f"error: {str(e)[:100]}"
+        checks["status"] = "degraded"
+
+    try:
+        from src.utils.s3 import s3_client, S3_BUCKET
+        s3_client.head_bucket(Bucket=S3_BUCKET)
+        checks["checks"]["minio"] = "ok"
+    except Exception as e:
+        checks["checks"]["minio"] = f"error: {str(e)[:100]}"
+        checks["status"] = "degraded"
+
+    return checks
 
 
 @app.get("/metrics", tags=["system"])

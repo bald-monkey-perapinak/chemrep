@@ -83,6 +83,14 @@ class Config:
         default_factory=lambda: os.getenv("BOARD_STUB_MODE", "false").lower() == "true"
     )
 
+    # ── LLM Budget Limits ─────────────────────────────────────────────────
+    llm_max_cost_per_lesson: float = field(
+        default_factory=lambda: float(os.getenv("LLM_MAX_COST_PER_LESSON", "0.50"))
+    )
+    llm_max_daily_cost: float = field(
+        default_factory=lambda: float(os.getenv("LLM_MAX_DAILY_COST", "10.0"))
+    )
+
     # ── Логирование ────────────────────────────────────────────────────────
     log_level: str = field(
         default_factory=lambda: os.getenv("LOG_LEVEL", "INFO")

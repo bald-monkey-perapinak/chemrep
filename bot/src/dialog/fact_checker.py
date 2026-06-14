@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -18,26 +19,39 @@ class FactChecker:
         if not self.retriever:
             return {"confidence": 0.5, "supported": False, "evidence": []}
         
-        # Extract key claims from response
         claims = self._extract_claims(response)
         
-        # Search knowledge base for supporting evidence
         evidence = []
+        supported_claims = 0
         for claim in claims:
             chunks = self.retriever.search(claim, top_k=3)
-            evidence.extend(chunks)
+            if chunks:
+                supported_claims += 1
+                evidence.extend(chunks)
         
-        # Calculate confidence based on evidence coverage
-        confidence = min(1.0, len(evidence) * 0.2) if evidence else 0.3
+        if not claims:
+            return {"confidence": 0.5, "supported": False, "evidence": []}
+        
+        support_ratio = supported_claims / len(claims)
+        confidence = min(1.0, 0.3 + support_ratio * 0.7)
         
         return {
-            "confidence": confidence,
+            "confidence": round(confidence, 2),
             "supported": confidence > 0.6,
-            "evidence": evidence
+            "evidence": evidence[:10],
         }
     
     def _extract_claims(self, text: str) -> list[str]:
-        """Extract key factual claims from text."""
-        # Simple sentence splitting for now
-        sentences = [s.strip() for s in text.split('.') if s.strip()]
-        return sentences[:5]  # Limit to top 5 claims
+        """Extract key factual claims from text, filtering out questions and exclamations."""
+        sentences = re.split(r'[.!?]+', text)
+        claims = []
+        for s in sentences:
+            s = s.strip()
+            if len(s) < 10:
+                continue
+            if s.endswith('?'):
+                continue
+            if s.startswith(('Давай', 'Теперь', 'Итак', 'Хорошо', 'Отлично')):
+                continue
+            claims.append(s)
+        return claims[:5]

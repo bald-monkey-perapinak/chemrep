@@ -47,7 +47,7 @@ from src.orchestrator.homework import deliver_homework
 from src.orchestrator.checkpoint import LessonCheckpoint
 from src.orchestrator.reconnect import ReconnectManager, is_connection_error
 from src.orchestrator.audio_pipeline import AudioPipeline
-from src.logging_config import set_lesson_context
+from src.logging_config import set_lesson_context, set_step_context
 
 # EventBus из backend — публикуем события для SSE
 import sys as _sys, os as _os
@@ -90,7 +90,10 @@ class LessonRunner:
     # ──────────────────────────────────────────────────────────────────────
 
     async def run(self) -> None:
-        set_lesson_context(str(self.lesson.id))
+        set_lesson_context(
+            str(self.lesson.id),
+            student_id=str(self.lesson.student_id) if self.lesson.student_id else None,
+        )
         try:
             await self._prepare()
             await self._init_audio()
@@ -100,6 +103,11 @@ class LessonRunner:
             await self._conduct_lesson()
         except asyncio.CancelledError:
             logger.warning("[runner %s] Задача отменена", self.lesson.id)
+            try:
+                if self._audio_pipeline and self._vcs and self._vcs.connected:
+                    await self._audio_pipeline.speak("Урок завершается. До свидания!")
+            except Exception:
+                pass
             await self._mark_failed("Задача отменена оркестратором")
             raise
         except Exception as exc:
@@ -275,11 +283,56 @@ class LessonRunner:
                 return True
 
             self._recording_allowed = False
+            self._notify_parent_no_consent(student)
             return False
         except Exception as e:
             logger.debug("[runner %s] Consent check failed: %s", self.lesson.id, e)
             self._recording_allowed = False
             return False
+
+    def _notify_parent_no_consent(self, student) -> None:
+        """Notify parent that a lesson was conducted (without recording) due to missing consent."""
+        try:
+            from src.models.consent import ParentalConsent
+            consent = self.db.query(ParentalConsent).filter(
+                ParentalConsent.student_id == student.id,
+            ).first()
+            if not consent or not consent.parent_email:
+                return
+
+            import os, smtplib, ssl
+            from email.mime.text import MIMEText
+            from email.mime.multipart import MIMEMultipart
+
+            host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+            port = int(os.getenv("SMTP_PORT", "465"))
+            user = os.getenv("SMTP_USER", "")
+            password = os.getenv("SMTP_PASSWORD", "") or os.getenv("SMTP_PASS", "")
+
+            if not user or not password:
+                return
+
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = f"Урок по химии — {student.full_name}"
+            msg["From"] = user
+            msg["To"] = consent.parent_email
+
+            html = f"""
+            <p>Здравствуйте, {consent.parent_name}!</p>
+            <p>Сегодня состоялся урок по химии с учеником <b>{student.full_name}</b>.</p>
+            <p>Запись урока не велась, так как не было получено согласие на запись.</p>
+            <p>Чтобы в будущем записи уроков были доступны, пожалуйста, дайте согласие через личный кабинет преподавателя.</p>
+            <p>С уважением,<br>ХимТьютор</p>
+            """
+            msg.attach(MIMEText(html, "html", "utf-8"))
+
+            ctx = ssl.create_default_context()
+            with smtplib.SMTP_SSL(host, port, context=ctx, timeout=15) as server:
+                server.login(user, password)
+                server.sendmail(user, consent.parent_email, msg.as_string())
+            logger.info("[runner] Parent notification sent to %s", consent.parent_email)
+        except Exception as e:
+            logger.debug("[runner] Parent notification failed: %s", e)
 
     # ──────────────────────────────────────────────────────────────────────
     # Ведение урока
@@ -338,6 +391,8 @@ class LessonRunner:
                 # Обновляем контекст шага в движке
                 if hasattr(self._llm, 'set_step_context'):
                     self._llm.set_step_context(i, len(script))
+
+                set_step_context(i + 1)
 
                 self.session.current_step = i + 1
                 self.db.commit()

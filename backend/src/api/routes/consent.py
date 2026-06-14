@@ -13,13 +13,14 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from src.api.routes.auth import get_current_teacher
 from src.db.base import get_db
 from src.models.consent import ParentalConsent
+from src.models.student import Student
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class ConsentCreate(BaseModel):
     student_id: UUID
     parent_email: EmailStr
     parent_name: str
+    parent_telegram_chat_id: Optional[str] = None
     consent_given: bool = False
     recording_allowed: bool = False
     data_processing_allowed: bool = False
@@ -40,6 +42,7 @@ class ConsentResponse(BaseModel):
     student_id: UUID
     parent_email: str
     parent_name: str
+    parent_telegram_chat_id: Optional[str] = None
     consent_given: bool
     recording_allowed: bool
     data_processing_allowed: bool
@@ -57,7 +60,13 @@ async def create_or_update_consent(
     current_user=Depends(get_current_teacher),
 ):
     """Создать или обновить согласие родителя."""
-    # Ищем существующее согласие
+    student = db.query(Student).filter(
+        Student.id == data.student_id,
+        Student.teacher_id == current_user.id,
+    ).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
     existing = db.query(ParentalConsent).filter(
         ParentalConsent.student_id == data.student_id,
     ).first()
@@ -65,6 +74,7 @@ async def create_or_update_consent(
     if existing:
         existing.parent_email = data.parent_email
         existing.parent_name = data.parent_name
+        existing.parent_telegram_chat_id = data.parent_telegram_chat_id
         existing.consent_given = data.consent_given
         existing.recording_allowed = data.recording_allowed
         existing.data_processing_allowed = data.data_processing_allowed
@@ -79,6 +89,7 @@ async def create_or_update_consent(
         student_id=data.student_id,
         parent_email=data.parent_email,
         parent_name=data.parent_name,
+        parent_telegram_chat_id=data.parent_telegram_chat_id,
         consent_given=data.consent_given,
         recording_allowed=data.recording_allowed,
         data_processing_allowed=data.data_processing_allowed,
@@ -97,6 +108,13 @@ async def check_student_consent(
     current_user=Depends(get_current_teacher),
 ):
     """Проверить согласие родителя для ученика."""
+    student = db.query(Student).filter(
+        Student.id == student_id,
+        Student.teacher_id == current_user.id,
+    ).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+
     consent = db.query(ParentalConsent).filter(
         ParentalConsent.student_id == student_id,
     ).first()
@@ -110,8 +128,9 @@ async def get_consent(
     current_user=Depends(get_current_teacher),
 ):
     """Получить согласие по ID."""
-    consent = db.query(ParentalConsent).filter(
+    consent = db.query(ParentalConsent).join(Student).filter(
         ParentalConsent.id == consent_id,
+        Student.teacher_id == current_user.id,
     ).first()
     if not consent:
         raise HTTPException(status_code=404, detail="Consent not found")

@@ -270,32 +270,36 @@ class IntentClassifier:
         Проверить правильность ответа ученика.
         Возвращает True (правильно), False (неправильно) или None (не удалось определить).
         """
-        # Простые проверки на основе вопроса
         question_lower = question.lower()
+        context_lower = context.lower()
 
-        # Вопросы типа "что такое X?" — ученик должен дать определение
+        is_yes_no_question = any(p in question_lower for p in [
+            "верно ли", "правильно ли", "так ли это", "согласны",
+            "верно", "это ", "является ли",
+        ])
+
+        if is_yes_no_question:
+            if answer in ("да", "ага", "угу", "точно", "именно", "верно", "правильно", "конечно"):
+                return True
+            elif answer in ("нет", "не", "неа", "не совсем", "вроде нет", "неверно", "неправильно"):
+                has_negation_in_question = any(neg in question_lower for neg in [
+                    "не ", "нет ", "никогда", "невозможно",
+                ])
+                if has_negation_in_question:
+                    return True
+                return False
+
         if "что такое" in question_lower or "что означает" in question_lower:
-            if len(answer.split()) >= 2:  # минимум 2 слова для определения
-                return True  # считаем правильным если ответ развёрнутый
+            if len(answer.split()) >= 2:
+                return True
 
-        # Вопросы типа "сколько?" — ученик должен назвать число
         if "сколько" in question_lower or "какое число" in question_lower:
             if re.search(r"\d+", answer):
                 return True
 
-        # Вопросы типа "верно ли?" — проверяем на да/нет
-        if "верно ли" in question_lower or "правильно ли" in question_lower:
-            if answer in ("да", "нет", "верно", "неверно", "правильно", "неправильно"):
-                return True
+        if len(answer.split()) <= 1 and answer not in ("да", "нет"):
+            return None
 
-        # Вопросы типа "Это X?" — проверяем на да/нет
-        if question_lower.startswith("это ") or question_lower.endswith("?"):
-            if answer in ("да", "нет", "ага", "угу", "точно", "именно"):
-                return True
-            elif answer in ("не", "неа", "не совсем", "вроде нет"):
-                return False
-
-        # Не можем определить — нужен LLM для проверки
         return None
 
     def _is_on_topic(self, text: str) -> bool:

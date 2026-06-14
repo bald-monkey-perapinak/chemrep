@@ -9,6 +9,7 @@ PATCH /api/auth/me       — обновить профиль (имя, платф
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+import threading
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -27,6 +28,10 @@ SECRET_KEY = get_jwt_secret()
 
 pwd_ctx    = None  # removed, using bcrypt directly
 oauth2     = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+
+# Token blacklist for revoked refresh tokens
+_token_blacklock = threading.Lock()
+_token_blacklist: set[str] = set()
 
 
 # ── Схемы ─────────────────────────────────────────────────────────────────
@@ -102,6 +107,9 @@ def get_current_teacher(
     except JWTError:
         raise cred_exc
 
+    if token in _token_blacklist:
+        raise cred_exc
+
     teacher = db.query(Teacher).filter(
         Teacher.id == teacher_id,
         Teacher.is_active == True,  # noqa: E712
@@ -158,6 +166,13 @@ def login(
     }
 
 
+@router.post("/logout", summary="Отозвать refresh token")
+def logout(data: RefreshRequest):
+    with _token_blacklock:
+        _token_blacklist.add(data.refresh_token)
+    return {"detail": "Logged out"}
+
+
 @router.post("/refresh", response_model=LoginResponse,
              summary="Обновить токены по refresh token")
 def refresh_token(
@@ -175,6 +190,9 @@ def refresh_token(
         if not teacher_id or token_type != "refresh":
             raise cred_exc
     except JWTError:
+        raise cred_exc
+
+    if data.refresh_token in _token_blacklist:
         raise cred_exc
 
     teacher = db.query(Teacher).filter(
@@ -207,3 +225,40 @@ def update_me(
     db.commit()
     db.refresh(teacher)
     return _teacher_out(teacher)
+
+
+@router.delete("/me", status_code=204, summary="Удалить аккаунт преподавателя")
+def delete_me(
+    teacher: Teacher = Depends(get_current_teacher),
+    db:      Session = Depends(get_db),
+):
+    teacher.is_active = False
+    db.commit()
+
+
+@router.get("/me/export", summary="Экспорт данных преподавателя")
+def export_data(
+    teacher: Teacher = Depends(get_current_teacher),
+    db:      Session = Depends(get_db),
+):
+    from src.models.student import Student
+    from src.models.lesson import Lesson
+    from src.models.knowledge import KnowledgeClass
+
+    students = db.query(Student).filter(Student.teacher_id == teacher.id).all()
+    lessons = db.query(Lesson).filter(Lesson.teacher_id == teacher.id).all()
+    classes = db.query(KnowledgeClass).filter(KnowledgeClass.teacher_id == teacher.id).all()
+
+    return {
+        "teacher": {
+            "email": teacher.email,
+            "full_name": teacher.full_name,
+            "subject": teacher.subject,
+        },
+        "students": [
+            {"full_name": s.full_name, "email": s.email, "grade": s.grade}
+            for s in students
+        ],
+        "lessons_count": len(lessons),
+        "classes_count": len(classes),
+    }

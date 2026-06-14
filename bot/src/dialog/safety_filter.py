@@ -19,6 +19,15 @@ BLOCKED_PATTERNS = [
     r"(?:ненавижу|гнобить|дискриминац)",
 ]
 
+# Prompt injection patterns (from student speech)
+INJECTION_PATTERNS = [
+    r"(?:забудь|проигнорируй|вне\s+контекста|system\s*prompt|инструкц(?:ия|ии|ий))",
+    r"(?:скажи\s+что\s+ты|объясни\s+как\s+ты|ты\s+должен|ты\s+обязан)",
+    r"(?:сгенерируй|создай\s+текст|напиши\s+код|отвечай\s+как)",
+    r"(?:previously|ignore|forget|disregard|new\s+instructions)",
+    r"(?:выполни|реши|сделай)\s+(?:задачу|домашку|контрольн)\s+(?:по|за)\s+(?:(?:фи|мат|ин|ли|ист|би|лит|гео)\w*)",
+]
+
 # Patterns indicating the bot is being asked to roleplay as something else
 ROLEPLAY_PATTERNS = [
     r"(?:представь|притворись|сыграй|будто\s+ты)",
@@ -48,18 +57,22 @@ class SafetyFilter:
         issues = []
         filtered_text = text
 
-        # Check for blocked patterns
         for pattern in BLOCKED_PATTERNS:
             if re.search(pattern, text, re.IGNORECASE):
                 issues.append(f"Blocked content: {pattern}")
                 self._violation_count += 1
                 logger.warning("[SafetyFilter] Blocked content detected: %s", text[:100])
 
-        # Check for roleplay manipulation
         for pattern in ROLEPLAY_PATTERNS:
             if re.search(pattern, text, re.IGNORECASE):
                 issues.append("Roleplay manipulation attempt")
                 logger.warning("[SafetyFilter] Roleplay attempt: %s", text[:100])
+
+        for pattern in INJECTION_PATTERNS:
+            if re.search(pattern, text, re.IGNORECASE):
+                issues.append("Prompt injection attempt")
+                self._violation_count += 1
+                logger.warning("[SafetyFilter] Injection attempt: %s", text[:100])
 
         # If critical violations found, return safe fallback
         if self._violation_count >= self._max_violations:

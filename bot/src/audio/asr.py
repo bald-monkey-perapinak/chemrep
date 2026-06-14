@@ -211,6 +211,12 @@ class ASRPipeline:
         silence_ms:         int = 900,
         max_phrase_ms:      int = 15_000,
     ):
+        import os
+        if os.getenv("ASR_CHILD_MODE", "false").lower() == "true":
+            vad_aggressiveness = 0
+            silence_ms = 700
+            logger.info("[ASR] Using child-friendly VAD settings")
+
         self._vad        = VAD(vad_aggressiveness)
         self._buffer     = PhraseBuffer(silence_ms, max_phrase_ms)
         self._transcriber = WhisperTranscriber(model_size, language)
@@ -288,6 +294,7 @@ class StubASR:
 def make_asr(
     model_size: str = "base",
     language:   str = "ru",
+    child_mode: bool = False,
 ) -> "ASRPipeline | StubASR":
     import os
     if os.getenv("ASR_STUB_MODE", "false").lower() == "true":
@@ -302,5 +309,8 @@ def make_asr(
             "Установите: pip install faster-whisper"
         )
         return StubASR()
+
+    if child_mode or os.getenv("ASR_CHILD_MODE", "false").lower() == "true":
+        logger.info("[ASR] Child mode enabled — lower VAD threshold for quieter voices")
 
     return ASRPipeline(model_size=model_size, language=language)

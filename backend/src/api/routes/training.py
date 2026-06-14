@@ -28,8 +28,11 @@ router = APIRouter(prefix="/training", tags=["training"])
 MAX_VIDEO_SIZE = 500 * 1024 * 1024  # 500 МБ
 ALLOWED_VIDEO = {
     "video/mp4", "video/webm", "video/quicktime", "video/x-msvideo",
-    "video/x-matroska", "application/octet-stream",
+    "video/x-matroska",
 }
+
+# Dedup: track currently processing video IDs to prevent double launches
+_processing_videos: set[uuid.UUID] = set()
 
 
 # ── Схемы ───────────────────────────────────────────────────────────────────
@@ -80,8 +83,8 @@ async def upload_video(
     db: Session = Depends(get_db),
 ):
     mime = file.content_type or ""
-    if not any(m in mime for m in ("video", "octet-stream")):
-        raise HTTPException(415, f"Неподдерживаемый тип: {file.filename}")
+    if not mime.startswith("video/"):
+        raise HTTPException(415, f"Неподдерживаемый тип: {file.filename}. Допустимы только видеофайлы.")
 
     content = await file.read()
     if len(content) > MAX_VIDEO_SIZE:
@@ -227,6 +230,11 @@ async def process_video(
     if video.status in (VideoStatus.PROCESSING, VideoStatus.ANALYZING):
         raise HTTPException(409, "Видео уже обрабатывается")
 
+    if video.id in _processing_videos:
+        raise HTTPException(409, "Видео уже обрабатывается")
+
+    _processing_videos.add(video.id)
+
     # Запускаем обработку в фоне
     import asyncio
     asyncio.create_task(_process_video(video.id, db))
@@ -283,6 +291,8 @@ async def _process_video(video_id: uuid.UUID, db: Session):
         video.status = VideoStatus.FAILED
         video.error_message = str(e)[:500]
         db.commit()
+    finally:
+        _processing_videos.discard(video_id)
 
 
 async def _extract_audio(video: TrainingVideo) -> str:

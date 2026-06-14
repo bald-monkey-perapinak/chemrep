@@ -49,12 +49,44 @@ class Scheduler:
             config.launch_offset,
             config.missed_timeout,
         )
+        await self._recover_active_sessions()
         while True:
             try:
                 await self._tick()
             except Exception:
                 logger.exception("Ошибка в tick()")
             await asyncio.sleep(config.poll_interval)
+
+    async def _recover_active_sessions(self) -> None:
+        """Recover lessons that were ACTIVE/STARTING when the bot last stopped."""
+        from src.models.session import LessonSession, SessionStatus
+
+        with get_session() as db:
+            stuck_sessions = (
+                db.query(LessonSession)
+                .join(Lesson)
+                .options(
+                    joinedload(LessonSession.lesson).joinedload(Lesson.teacher),
+                    joinedload(LessonSession.lesson).joinedload(Lesson.student),
+                    joinedload(LessonSession.lesson).joinedload(Lesson.topic),
+                )
+                .filter(
+                    LessonSession.status.in_([SessionStatus.STARTING, SessionStatus.ACTIVE]),
+                )
+                .all()
+            )
+            for session in stuck_sessions:
+                lesson = session.lesson
+                if lesson and lesson.id not in self._running:
+                    logger.warning(
+                        "Recovering interrupted lesson %s (student: %s) — relaunching",
+                        lesson.id,
+                        lesson.student.full_name if lesson.student else "—",
+                    )
+                    session.status = SessionStatus.FAILED
+                    session.error_message = "Bot restarted during lesson"
+                    lesson.status = LessonStatus.CANCELLED
+                    db.commit()
 
     # ──────────────────────────────────────────────────────────────────────
     # Один «тик» планировщика

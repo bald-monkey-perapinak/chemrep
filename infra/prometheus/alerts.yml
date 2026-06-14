@@ -1,0 +1,47 @@
+groups:
+  - name: chemrep-alerts
+    rules:
+      - alert: HighErrorRate
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) / sum(rate(http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High 5xx error rate"
+          description: "More than 5% of requests are returning 5xx errors."
+
+      - alert: HighLLMLatency
+        expr: histogram_quantile(0.95, sum(rate(llm_request_duration_seconds_bucket[5m])) by (le)) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM p95 latency > 10s"
+          description: "LLM response latency is degrading user experience."
+
+      - alert: NoLessonsCompleted
+        expr: sum(increase(http_requests_total{path="/api/v1/sessions", status="200"}[24h])) == 0
+        for: 24h
+        labels:
+          severity: info
+        annotations:
+          summary: "No lessons completed in 24h"
+          description: "No lesson sessions have been recorded in the last 24 hours."
+
+      - alert: HighLLMCost
+        expr: sum(rate(llm_tokens_total[1h])) * 0.000004 > 5
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "LLM cost exceeding $5/hour"
+          description: "Token usage suggests high API costs."
+
+      - alert: DatabasePoolExhausted
+        expr: db_pool_checked_out / (db_pool_checked_out + db_pool_checked_in) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DB connection pool nearly exhausted"
+          description: "More than 80% of DB connections are in use."

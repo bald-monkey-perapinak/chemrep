@@ -175,3 +175,15 @@ class ZoomClient(PlaywrightVCSBase):
             logger.warning("[Zoom] Не удалось нажать Leave: %s", e)
         finally:
             await page.close()
+
+    async def student_connected(self) -> bool:
+        if not self._page:
+            return False
+        try:
+            participants = self._page.locator(
+                '[class*="participant" i]:visible, '
+                '[data-testid*="participant"]:visible'
+            )
+            return await participants.count() > 1
+        except Exception:
+            return self.connected

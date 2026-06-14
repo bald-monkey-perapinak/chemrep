@@ -74,8 +74,8 @@ async def clone_voice(
     samples = []
     for upload in files:
         mime = upload.content_type or ""
-        if not any(a in mime for a in ("audio", "mpeg", "wav", "mp4")):
-            raise HTTPException(415, f"Неподдерживаемый тип: {upload.filename}")
+        if not mime.startswith("audio/") or mime not in ALLOWED_AUDIO:
+            raise HTTPException(415, f"Неподдерживаемый тип: {upload.filename}. Допустимы: MP3, WAV, M4A.")
         content = await upload.read()
         if len(content) > MAX_SAMPLE_SIZE:
             raise HTTPException(413, f"Файл {upload.filename} больше 10 МБ")

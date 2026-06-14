@@ -82,6 +82,17 @@ wss.on('connection', (ws, req) => {
         console.warn('[board] Invalid message format: missing type');
         return;
       }
+      const ALLOWED_TYPES = new Set([
+        'draw', 'erase', 'clear', 'text', 'shape', 'line', 'rect', 'circle',
+        'ellipse', 'path', 'polygon', 'pen', 'highlighter', 'fill',
+        'undo', 'redo', 'page_switch', 'page_add', 'page_delete',
+        'zoom', 'pan', 'cursor_move', 'selection', 'move', 'resize',
+        'insert_image', 'insert_equation', 'color_change', 'stroke_width',
+      ]);
+      if (!ALLOWED_TYPES.has(msg.type)) {
+        console.warn(`[board] Unknown message type: ${msg.type}`);
+        return;
+      }
       broadcast(sessionId, msg, ws);
     } catch (e) {
       console.error('[board] Invalid message:', e.message);

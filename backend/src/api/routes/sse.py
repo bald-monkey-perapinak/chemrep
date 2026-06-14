@@ -177,3 +177,79 @@ def active_subscriptions():
         lesson_id: event_bus.subscriber_count(lesson_id)
         for lesson_id in event_bus._subscribers
     }
+
+
+# ── WebSocket для операторского контроля ─────────────────────────────────────
+
+from fastapi import WebSocket, WebSocketDisconnect
+
+
+@router.websocket("/ws/lessons/{lesson_id}")
+async def operator_ws(
+    websocket: WebSocket,
+    lesson_id: UUID,
+    token: str = Query(...),
+):
+    """
+    WebSocket for operator control of active lessons.
+    Operator can send commands: pause, resume, skip_step, end.
+    Receives real-time lesson events.
+    """
+    await websocket.accept()
+
+    # Authenticate
+    from src.db.base import SessionLocal
+    db = SessionLocal()
+    try:
+        teacher = _teacher_from_token(token, db)
+    except Exception:
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
+    finally:
+        db.close()
+
+    # Verify lesson ownership
+    db = SessionLocal()
+    try:
+        lesson = db.query(Lesson).filter(
+            Lesson.id == lesson_id,
+            Lesson.teacher_id == teacher.id,
+        ).first()
+        if not lesson:
+            await websocket.close(code=4004, reason="Lesson not found")
+            return
+    finally:
+        db.close()
+
+    # Subscribe to events
+    queue = event_bus.subscribe(lesson_id)
+    logger.info("[WS] Operator connected to lesson %s", lesson_id)
+
+    import asyncio
+
+    async def receive_commands():
+        try:
+            while True:
+                data = await websocket.receive_json()
+                command = data.get("command")
+                if command in ("pause", "resume", "skip_step", "end"):
+                    event_bus.publish(lesson_id, {
+                        "kind": "operator_command",
+                        "data": {"command": command, "args": data.get("args", {})},
+                    })
+                    logger.info("[WS] Operator command: %s for lesson %s", command, lesson_id)
+        except WebSocketDisconnect:
+            pass
+
+    async def send_events():
+        try:
+            while True:
+                event = await queue.get()
+                await websocket.send_json(event)
+                if event.get("kind") in ("session_ended", "session_failed"):
+                    break
+        except Exception:
+            pass
+
+    await asyncio.gather(receive_commands(), send_events())
+    event_bus.unsubscribe(lesson_id, queue)

@@ -14,8 +14,8 @@ from starlette.responses import JSONResponse
 
 # Path prefix → (max_requests, window_seconds)
 PATH_LIMITS: dict[str, tuple[int, int]] = {
-    "/api/auth/login":    (5, 60),    # 5 login attempts per minute
-    "/api/auth/register": (3, 300),   # 3 registrations per 5 minutes
+    "/api/v1/auth/login":    (5, 60),    # 5 login attempts per minute
+    "/api/v1/auth/register": (3, 300),   # 3 registrations per 5 minutes
 }
 
 # Cleanup interval: purge keys older than this many seconds
@@ -43,6 +43,23 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 return limits
         return self.default_max, self.default_window
 
+    def _get_rate_key(self, request: Request, path: str) -> str:
+        """Use teacher_id from JWT if available, else fall back to IP."""
+        auth = request.headers.get("authorization", "")
+        if auth.startswith("Bearer "):
+            try:
+                from jose import jwt
+                from src.config.jwt import get_jwt_secret, ALGORITHM
+                token = auth[7:]
+                payload = jwt.decode(token, get_jwt_secret(), algorithms=[ALGORITHM])
+                teacher_id = payload.get("sub")
+                if teacher_id:
+                    return f"t:{teacher_id}:{path}"
+            except Exception:
+                pass
+        ip = self._client_ip(request)
+        return f"{ip}:{path}"
+
     def _maybe_cleanup(self) -> None:
         """Remove stale keys to prevent memory leak."""
         now = time.time()
@@ -64,12 +81,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         self._maybe_cleanup()
 
-        ip = self._client_ip(request)
         max_req, window = self._get_limits(path)
         now = time.time()
         cutoff = now - window
 
-        key = f"{ip}:{path}"
+        key = self._get_rate_key(request, path)
         timestamps = self._requests[key]
         self._requests[key] = [t for t in timestamps if t > cutoff]
 

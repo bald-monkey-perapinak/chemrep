@@ -344,7 +344,17 @@ async def upload_asset(
     from src.models.knowledge import TopicAsset
     from src.utils.s3 import upload_bytes
 
+    ALLOWED_ASSET_MIME = {"image/svg+xml", "image/png", "image/jpeg", "image/gif", "image/webp"}
+    MAX_ASSET_SIZE = 5 * 1024 * 1024  # 5 MB
+
     content = await file.read()
+    if len(content) > MAX_ASSET_SIZE:
+        raise HTTPException(413, "Файл слишком большой (максимум 5 МБ)")
+
+    mime = file.content_type or ""
+    if mime not in ALLOWED_ASSET_MIME:
+        raise HTTPException(415, f"Неподдерживаемый тип: {mime}. Допустимы: SVG, PNG, JPEG, GIF, WebP.")
+
     ext = os.path.splitext(file.filename or "")[1]
     storage_path = f"topics/{topic_id}/assets/{_uuid.uuid4()}{ext}"
 

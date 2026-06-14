@@ -75,10 +75,16 @@ except ImportError:
     _HAS_METRICS = False
 
 # Модель Claude для диалога (конфигурируется через env)
-CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-4-20250414")
 MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "1000"))
 API_URL = os.getenv("ANTHROPIC_API_URL", "https://api.anthropic.com/v1/messages")
 API_VERSION = "2023-06-01"
+
+# Cost tracking
+LLM_MAX_COST_PER_LESSON = float(os.getenv("LLM_MAX_COST_PER_LESSON", "0.50"))
+LLM_MAX_DAILY_COST = float(os.getenv("LLM_MAX_DAILY_COST", "10.0"))
+_INPUT_PRICE_PER_TOKEN = 0.0000008  # Claude Haiku input
+_OUTPUT_PRICE_PER_TOKEN = 0.000004  # Claude Haiku output
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -345,6 +351,10 @@ class TutorDialogEngine:
         self._history: list[DialogMessage] = []
         self._teaching_style = teaching_style or "Используй стандартный стиль преподавания."
 
+        # Cost tracking
+        self._lesson_cost = 0.0
+        self._interaction_log: list[dict] = []
+
         # Инициализация компонентов
         self._intent_classifier = IntentClassifier(
             current_topic_keywords=topic_context[:200] if topic_context else ""
@@ -519,6 +529,15 @@ class TutorDialogEngine:
         )
 
         # 10. Вызвать Claude API с retry/backoff
+        if self._lesson_cost >= LLM_MAX_COST_PER_LESSON:
+            logger.warning("[TutorEngine] Lesson cost limit reached: $%.2f", self._lesson_cost)
+            return TutorResponse(
+                text="Давай повторим то, что уже прошли. Есть вопросы по пройденному материалу?",
+                intent=intent,
+                strategy=strategy,
+                understanding=understanding,
+            )
+
         import time as _time
         reply_text = None
         tokens = 0
@@ -570,6 +589,8 @@ class TutorDialogEngine:
                     input_tokens = data.get("usage", {}).get("input_tokens", 0)
                     if input_tokens:
                         LLM_TOKENS.labels(model=CLAUDE_MODEL, type="input").inc(input_tokens)
+                    cost = (input_tokens or 0) * _INPUT_PRICE_PER_TOKEN + tokens * _OUTPUT_PRICE_PER_TOKEN
+                    self._lesson_cost += cost
                 break
             except httpx.HTTPStatusError as e:
                 if e.response.status_code in (429, 500, 502, 503) and attempt < max_retries - 1:
@@ -644,6 +665,19 @@ class TutorDialogEngine:
         # 14. Добавить ответ в историю
         self._history.append(DialogMessage(role="assistant", text=reply_text))
 
+        # Record interaction for A/B analysis
+        self._interaction_log.append({
+            "student_text": student_text,
+            "intent": intent.type.value,
+            "intent_confidence": intent.confidence,
+            "strategy": strategy.method.value if strategy else None,
+            "understanding": understanding.value if understanding else None,
+            "tokens": tokens,
+            "cost": cost if 'cost' in dir() else 0,
+            "reply_length": len(reply_text),
+            "safety_triggered": not safety_check["safe"],
+        })
+
         logger.info(
             "[TutorEngine] Ответ (%d токенов): %s",
             tokens, reply_text[:100],
@@ -659,6 +693,10 @@ class TutorDialogEngine:
             tokens_used=tokens,
             student_model_snapshot=self._student_model.to_dict(),
         )
+
+    def get_interaction_log(self) -> list[dict]:
+        """Return the full interaction log for A/B analysis."""
+        return self._interaction_log
 
     def _estimate_emotion(
         self,

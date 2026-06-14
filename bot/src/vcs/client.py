@@ -54,6 +54,10 @@ class BaseVCSClient(ABC):
     @abstractmethod
     async def recv_audio(self) -> bytes: ...
 
+    async def student_connected(self) -> bool:
+        """Check if student is currently in the conference. Default: always True."""
+        return True
+
 
 class StubVCSClient(BaseVCSClient):
     """Заглушка — логирует вызовы, реального браузера не запускает."""

@@ -6,6 +6,7 @@
 import os
 import sys
 import uuid
+import bcrypt
 from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
@@ -28,10 +29,11 @@ def seed():
     db = Session()
     try:
         # ── Преподаватель ──────────────────────────────────────────────────────
+        demo_password = os.getenv("DEMO_PASSWORD", "demo1234")
         teacher = Teacher(
             id=uuid.uuid4(),
             email="ivanova@chemrep.ru",
-            hashed_password="$2b$12$hashed_placeholder",
+            hashed_password=bcrypt.hashpw(demo_password.encode(), bcrypt.gensalt()).decode(),
             full_name="Иванова Алина Петровна",
             subject="Химия",
             default_vcs_platform="zoom",

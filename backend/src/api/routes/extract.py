@@ -2,10 +2,11 @@
 Extract API — извлечение текста из файлов (PDF, DOCX) для импорта сценариев.
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from pydantic import BaseModel
 
 from src.utils.text_extractor import extract_text
+from src.api.routes.auth import get_current_teacher
 
 router = APIRouter(prefix="/extract", tags=["extract"])
 
@@ -22,7 +23,10 @@ class ExtractResponse(BaseModel):
     summary="Извлечь текст из файла",
     description="Принимает PDF, DOCX или TXT файл и возвращает извлечённый текст.",
 )
-async def extract_file_text(file: UploadFile = File(...)):
+async def extract_file_text(
+    file: UploadFile = File(...),
+    current_user=Depends(get_current_teacher),
+):
     filename = file.filename or "unknown"
 
     if not filename:

@@ -12,6 +12,7 @@ class ParentalConsent(Base):
     student_id = Column(UUID(as_uuid=True), ForeignKey("students.id"), nullable=False)
     parent_email = Column(String(255), nullable=False)
     parent_name = Column(String(255), nullable=False)
+    parent_telegram_chat_id = Column(String(50), nullable=True)
     consent_given = Column(Boolean, default=False)
     consent_date = Column(DateTime, nullable=True)
     recording_allowed = Column(Boolean, default=False)

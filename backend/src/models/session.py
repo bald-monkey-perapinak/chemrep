@@ -48,6 +48,11 @@ class LessonSession(Base):
     # Сводка урока (JSONB — LessonSummary.to_dict())
     summary = Column(JSONB, nullable=True)
 
+    # Чекпоинты для восстановления после падения
+    checkpoint_step = Column(Integer, nullable=True)
+    checkpoint_state = Column(Text, nullable=True)
+    checkpoint_time = Column(DateTime(timezone=True), nullable=True)
+
     # Технические метрики
     bot_joined_at = Column(DateTime(timezone=True), nullable=True)
     bot_left_at = Column(DateTime(timezone=True), nullable=True)

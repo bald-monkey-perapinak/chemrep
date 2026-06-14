@@ -16,7 +16,9 @@ import logging
 import re
 import sys
 import os
-from dataclasses import dataclass
+import hashlib
+from collections import OrderedDict
+from dataclasses import dataclass, field
 from typing import Optional
 from uuid import UUID
 
@@ -42,6 +44,33 @@ class RetrievedChunk:
     title: str        # название топика или файла
     text: str         # фрагмент текста
     score: float      # релевантность (0–1, выше — лучше)
+
+
+CACHE_MAX_SIZE = 256
+
+
+class RAGCache:
+    """Simple LRU cache for RAG retrieval results."""
+
+    def __init__(self, max_size: int = CACHE_MAX_SIZE):
+        self._cache: OrderedDict[str, list[RetrievedChunk]] = OrderedDict()
+        self._max_size = max_size
+
+    def get(self, key: str) -> list[RetrievedChunk] | None:
+        if key in self._cache:
+            self._cache.move_to_end(key)
+            return self._cache[key]
+        return None
+
+    def set(self, key: str, value: list[RetrievedChunk]) -> None:
+        if key in self._cache:
+            self._cache.move_to_end(key)
+        self._cache[key] = value
+        if len(self._cache) > self._max_size:
+            self._cache.popitem(last=False)
+
+
+_rag_cache = RAGCache()
 
 
 class RAGRetriever:
@@ -95,6 +124,12 @@ class RAGRetriever:
         if not query.strip():
             return []
 
+        cache_key = hashlib.md5(f"{self._topic_id}:{query.lower().strip()}".encode()).hexdigest()
+        cached = _rag_cache.get(cache_key)
+        if cached is not None:
+            logger.debug("[RAG] Cache hit for query=%r", query[:50])
+            return cached
+
         chunks: list[RetrievedChunk] = []
 
         # 1. Семантический поиск через pgvector (если доступен)
@@ -124,6 +159,7 @@ class RAGRetriever:
             "[RAG] query=%r → %d чанков (из %d кандидатов, embeddings=%s)",
             query[:50], len(result), len(chunks), self._use_embeddings,
         )
+        _rag_cache.set(cache_key, result)
         return result
 
     # ── pgvector поиск ────────────────────────────────────────────────────

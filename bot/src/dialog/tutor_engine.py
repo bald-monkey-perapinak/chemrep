@@ -637,7 +637,7 @@ class TutorDialogEngine:
 
         if reply_text is None:
             return TutorResponse(
-                text="Не удалось получить ответ. Давай продолжим урок.",
+                text="Извини, временные технические трудности. Давай повторим пройденный материал.",
                 intent=intent,
                 strategy=strategy,
                 understanding=understanding,

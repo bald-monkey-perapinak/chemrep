@@ -302,6 +302,14 @@ async def upload_files(
                 detail=f"Тип файла не поддерживается: {mime}",
             )
 
+        # Validate magic bytes to prevent MIME spoofing
+        from src.utils.file_validator import validate_file_magic
+        if not validate_file_magic(content[:32], mime):
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail=f"Содержимое файла не соответствует типу {mime}",
+            )
+
         # Генерируем путь в S3
         file_uuid = uuid.uuid4()
         ext = os.path.splitext(upload.filename or "")[1]

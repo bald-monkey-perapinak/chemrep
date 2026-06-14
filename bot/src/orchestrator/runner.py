@@ -789,6 +789,25 @@ class LessonRunner:
                 self._publish('homework_sent', {
                     'student_email': self.lesson.student.email if self.lesson.student else None,
                 })
+            else:
+                # Notify parent via Telegram that email delivery failed
+                try:
+                    from src.orchestrator.notifier import notify_homework_sent
+                    from src.models.consent import ParentalConsent
+                    student = self.lesson.student
+                    if student:
+                        consent = self.db.query(ParentalConsent).filter(
+                            ParentalConsent.student_id == student.id,
+                        ).first()
+                        if consent and consent.parent_telegram_chat_id:
+                            await notify_homework_sent(
+                                parent_chat_id=consent.parent_telegram_chat_id,
+                                student_name=student.full_name,
+                                topic_name=self.lesson.topic.name if self.lesson.topic else "урок",
+                                teacher_name=self.lesson.teacher.full_name,
+                            )
+                except Exception:
+                    pass
         except Exception as e:
             logger.error("[runner %s] Ошибка отправки ДЗ: %s", self.lesson.id, e)
 

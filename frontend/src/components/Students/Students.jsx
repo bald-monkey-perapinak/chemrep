@@ -11,15 +11,15 @@ export default function Students() {
   const showToast      = useStore(s => s.showToast)
   const studentsLoading = useStore(s => s.studentsLoading)
 
-  if (studentsLoading) {
-    return <SkeletonStudents />
-  }
-
   const [open, setOpen]     = useState(false)
   const [name, setName]     = useState('')
   const [email, setEmail]   = useState('')
   const [grade, setGrade]   = useState('')
   const [err, setErr]       = useState('')
+
+  if (studentsLoading) {
+    return <SkeletonStudents />
+  }
 
   async function save() {
     if (!name.trim()) { setErr('Введите имя'); return }

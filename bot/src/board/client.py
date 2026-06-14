@@ -35,9 +35,10 @@ class StubBoardClient(BaseBoardClient):
 
 
 class BoardClient(BaseBoardClient):
-    def __init__(self, ws_url: str, session_id: str):
+    def __init__(self, ws_url: str, session_id: str, token: str = ""):
         self._ws_url = ws_url
         self._session_id = session_id
+        self._token = token
         self._ws = None
         self._consecutive_errors = 0
         self._max_consecutive_errors = 5
@@ -48,6 +49,8 @@ class BoardClient(BaseBoardClient):
             return
         import websockets
         url = f"{self._ws_url}/rooms/{self._session_id}"
+        if self._token:
+            url += f"?token={self._token}"
         try:
             self._ws = await websockets.connect(url, ping_interval=20, ping_timeout=10)
             self._consecutive_errors = 0
@@ -88,9 +91,9 @@ class BoardClient(BaseBoardClient):
             self._ws = None
 
 
-def make_board_client(session_id: Optional[str] = None) -> BaseBoardClient:
+def make_board_client(session_id: Optional[str] = None, token: str = "") -> BaseBoardClient:
     stub = os.getenv("BOARD_STUB_MODE", "false").lower() == "true"
     if stub or not session_id:
         return StubBoardClient()
     ws_url = os.getenv("BOARD_WS_URL", "ws://whiteboard:3001")
-    return BoardClient(ws_url=ws_url, session_id=session_id)
+    return BoardClient(ws_url=ws_url, session_id=session_id, token=token)

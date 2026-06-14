@@ -2,12 +2,14 @@
 AudioPipeline — озвучка текста через TTS + отправка аудио в VCS.
 
 Извлекает логику chunked PCM playback из LessonRunner.
+Поддерживает StreamingTTS для снижения латентности.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
@@ -26,6 +28,15 @@ class AudioPipeline:
         self._vcs = vcs
         self._dialog = dialog_log
         self._lesson_id = lesson_id
+        self._use_streaming = os.getenv("TTS_STREAMING", "false").lower() == "true"
+        self._streaming_tts = None
+        if self._use_streaming:
+            try:
+                from src.audio.streaming_tts import StreamingTTS
+                self._streaming_tts = StreamingTTS(tts)
+                logger.info("[audio] StreamingTTS enabled for lower latency")
+            except Exception:
+                self._use_streaming = False
 
     async def speak(self, text: str) -> None:
         """Озвучить текст через TTS и отправить в VCS."""
@@ -39,6 +50,23 @@ class AudioPipeline:
             "ts": datetime.now(timezone.utc).isoformat(),
         })
 
+        if self._use_streaming and self._streaming_tts:
+            await self._speak_streaming(text)
+        else:
+            await self._speak_batch(text)
+
+    async def _speak_streaming(self, text: str) -> None:
+        """Stream TTS audio chunks for lower latency."""
+        try:
+            async for chunk in self._streaming_tts.synthesize_stream(text):
+                await self._vcs.send_audio(chunk)
+                await asyncio.sleep(SPEAK_PAUSE)
+        except Exception as e:
+            logger.error("[runner %s] StreamingTTS ошибка: %s", self._lesson_id, e)
+            await self._speak_batch(text)
+
+    async def _speak_batch(self, text: str) -> None:
+        """Batch TTS: synthesize all, then send chunks."""
         try:
             pcm = await self._tts.synthesize(text)
         except Exception as e:

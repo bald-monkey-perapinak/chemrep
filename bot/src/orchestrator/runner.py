@@ -47,6 +47,9 @@ from src.orchestrator.homework import deliver_homework
 from src.orchestrator.checkpoint import LessonCheckpoint
 from src.orchestrator.reconnect import ReconnectManager, is_connection_error
 from src.orchestrator.audio_pipeline import AudioPipeline
+from src.dialog.pace_controller import PaceController
+from src.vcs.monitor import VCSMonitor
+from src.llm.version_manager import LLMVersionManager
 from src.logging_config import set_lesson_context, set_step_context
 
 # EventBus из backend — публикуем события для SSE
@@ -84,6 +87,9 @@ class LessonRunner:
         self._recording_allowed = False
         self._audio_pipeline: AudioPipeline | None = None
         self._reconnect: ReconnectManager | None = None
+        self._pace_controller = PaceController()
+        self._vcs_monitor = VCSMonitor()
+        self._llm_version_manager = LLMVersionManager()
 
     # ──────────────────────────────────────────────────────────────────────
     # Публичный API
@@ -200,7 +206,22 @@ class LessonRunner:
 
     async def _init_board(self) -> None:
         session_id = str(self.session.id) if self.session else None
-        self._board = make_board_client(session_id=session_id)
+        # Generate JWT token for board WebSocket auth
+        board_token = ""
+        try:
+            from src.config.jwt import get_jwt_secret, ALGORITHM, ACCESS_TOKEN_EXPIRE_MIN
+            from jose import jwt
+            from datetime import timedelta
+            expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MIN)
+            board_token = jwt.encode(
+                {"sub": str(self.lesson.teacher_id), "exp": expire, "type": "access"},
+                get_jwt_secret(),
+                algorithm=ALGORITHM,
+            )
+        except Exception as e:
+            logger.warning("[runner %s] Could not generate board token: %s", self.lesson.id, e)
+
+        self._board = make_board_client(session_id=session_id, token=board_token)
         logger.info("[runner %s] Board=%s  session=%s",
                     self.lesson.id, type(self._board).__name__, session_id)
 
@@ -220,7 +241,12 @@ class LessonRunner:
             display_name=f"Помощник — {lesson.teacher.full_name}",
         )
         self._vcs = make_vcs_client(info)
-        await self._vcs.connect()
+        try:
+            await self._vcs.connect()
+            self._vcs_monitor.record_success()
+        except Exception as e:
+            self._vcs_monitor.record_failure(str(e))
+            raise
 
         # Инициализируем пайплайн аудио и менеджер переподключения
         self._audio_pipeline = AudioPipeline(
@@ -582,14 +608,17 @@ class LessonRunner:
         Слушаем ответ ученика и реагируем.
         Возвращает TutorResponse для адаптации темпа урока.
         """
+        import time as _time
         heard = False
         last_response = None
+        response_start = _time.monotonic()
 
         async for phrase in self._asr.listen(self._vcs, timeout=LISTEN_TIMEOUT):
             if not phrase.strip():
                 continue
 
-            logger.info("[runner %s] 👂 %s", self.lesson.id, phrase)
+            response_time = _time.monotonic() - response_start
+            logger.info("[runner %s] 👂 %s (response_time=%.1fs)", self.lesson.id, phrase, response_time)
             self._dialog.append({
                 "role": "student",
                 "text": phrase,
@@ -628,6 +657,10 @@ class LessonRunner:
 
                 await self._speak(response.text)
                 last_response = response
+
+                # Record response time for pace adaptation
+                is_correct = hasattr(response, 'intent') and response.intent and response.intent.type.value == 'correct_answer'
+                self._pace_controller.record_response(response_time, is_correct)
 
                 # Генерируем дополнительную задачу при ошибках
                 if hasattr(self._llm, 'generate_practice_if_needed'):

@@ -54,7 +54,7 @@ class ConsentResponse(BaseModel):
 
 
 @router.post("", response_model=ConsentResponse)
-async def create_or_update_consent(
+def create_or_update_consent(
     data: ConsentCreate,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_teacher),
@@ -102,7 +102,7 @@ async def create_or_update_consent(
 
 
 @router.get("/student/{student_id}", response_model=ConsentResponse | None)
-async def check_student_consent(
+def check_student_consent(
     student_id: UUID,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_teacher),
@@ -122,7 +122,7 @@ async def check_student_consent(
 
 
 @router.get("/{consent_id}", response_model=ConsentResponse)
-async def get_consent(
+def get_consent(
     consent_id: UUID,
     db: Session = Depends(get_db),
     current_user=Depends(get_current_teacher),

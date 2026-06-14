@@ -36,6 +36,7 @@ from src.events.bus import event_bus
 from src.models.lesson import Lesson
 from src.models.teacher import Teacher
 from src.config.jwt import get_jwt_secret, ALGORITHM
+from src.api.routes.auth import get_current_teacher
 
 logger = logging.getLogger(__name__)
 
@@ -45,14 +46,37 @@ HEARTBEAT_INTERVAL = 15   # секунд
 SECRET_KEY = get_jwt_secret()
 
 
+# ── SSE Token endpoint (short-lived tokens for URL-safe SSE) ──────────────
+
+@router.get("/token", summary="Получить короткоживущий токен для SSE")
+def get_sse_token(
+    teacher: Teacher = Depends(get_current_teacher),
+):
+    """
+    Генерирует токен с коротким TTL (5 минут) для использования в SSE URL.
+    Это безопаснее, чем передавать основной JWT в URL.
+    """
+    from datetime import timedelta
+    expire = datetime.now(timezone.utc) + timedelta(minutes=5)
+    token = jwt.encode(
+        {"sub": str(teacher.id), "exp": expire, "type": "sse"},
+        SECRET_KEY,
+        algorithm=ALGORITHM,
+    )
+    return {"token": token, "expires_in": 300}
+
+
 # ── Auth через query-параметр (EventSource не поддерживает заголовки) ─────
 
 def _teacher_from_token(token: str, db: Session) -> Teacher:
     try:
         payload    = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         teacher_id = payload.get("sub")
+        token_type = payload.get("type")
         if not teacher_id:
             raise ValueError("no sub")
+        if token_type not in ("access", "sse"):
+            raise ValueError("invalid token type for SSE")
     except (JWTError, ValueError):
         raise HTTPException(401, "Недействительный токен")
 

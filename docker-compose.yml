@@ -44,9 +44,12 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-chemrep}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-chemrep}
       - S3_ENDPOINT=http://minio:9000
       - S3_BUCKET=${S3_BUCKET:-chemrep-files}
+      - S3_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - S3_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
       - EMBEDDING_MODEL=paraphrase-multilingual-MiniLM-L12-v2
-      - JWT_SECRET=${JWT_SECRET}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://localhost:3000,http://localhost:5173}
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://localhost:3000}
+      - APP_ENV=${APP_ENV:-development}
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,7 +60,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
+    restart: unless-stopped
     logging: *default-logging
     deploy:
       resources:
@@ -71,22 +75,29 @@ services:
       dockerfile: bot/Dockerfile
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-chemrep}:${POSTGRES_PASSWORD:-password}@postgres:5432/${POSTGRES_DB:-chemrep}
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - S3_ENDPOINT=http://minio:9000
+      - S3_BUCKET=${S3_BUCKET:-chemrep-files}
+      - S3_ACCESS_KEY=${MINIO_ROOT_USER:-minioadmin}
+      - S3_SECRET_KEY=${MINIO_ROOT_PASSWORD:-minioadmin}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-haiku-4-5-20251001}
       - TTS_ENGINE=piper
-      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY:-}
       - ASR_MODEL_SIZE=small
       - ASR_LANGUAGE=ru
       - VAD_AGGRESSIVENESS=1
       - BOARD_WS_URL=ws://whiteboard:3001
       - BOARD_STUB_MODE=false
-      - JWT_SECRET=${JWT_SECRET}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://localhost:3000,http://localhost:5173}
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env}
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-465}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
       postgres:
         condition: service_healthy
       whiteboard:
@@ -96,7 +107,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
+    restart: unless-stopped
     deploy:
       resources:
         limits:
@@ -110,11 +122,14 @@ services:
       - "3001:3001"
     environment:
       - PORT=3001
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET in .env}
+      - BOARD_STUB_MODE=false
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/health', r => r.statusCode === 200 ? process.exit(0) : process.exit(1)).on('error', () => process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 3
+    restart: unless-stopped
     logging: *default-logging
     deploy:
       resources:
@@ -127,7 +142,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-chemrep}
       POSTGRES_USER: ${POSTGRES_USER:-chemrep}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     expose:
@@ -137,6 +152,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
     deploy:
       resources:
         limits:
@@ -159,6 +175,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
     deploy:
       resources:
         limits:
@@ -169,18 +186,24 @@ services:
     image: prom/prometheus:latest
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml
+      - prometheus_data:/prometheus
     expose:
       - "9090"
+    restart: unless-stopped
 
   grafana:
     image: grafana/grafana:latest
     volumes:
       - ./infra/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+      - ./infra/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+      - grafana_data:/var/lib/grafana
     expose:
       - "3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
       - GF_AUTH_ANONYMOUS_ENABLED=false
+    restart: unless-stopped
 
 x-logging: &default-logging
   driver: "json-file"
@@ -191,3 +214,5 @@ x-logging: &default-logging
 volumes:
   postgres_data:
   minio_data:
+  grafana_data:
+  prometheus_data:

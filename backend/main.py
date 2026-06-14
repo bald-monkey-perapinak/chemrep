@@ -8,6 +8,8 @@ import logging
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
+logger = logging.getLogger(__name__)
+
 # Загружаем .env из корня проекта (../.env)
 _env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
 if os.path.exists(_env_path):
@@ -40,6 +42,21 @@ from src.utils.logging import setup_json_logging
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_json_logging()
+    # Auto-run Alembic migrations on startup
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["alembic", "upgrade", "head"],
+            capture_output=True, text=True, timeout=60,
+            cwd=os.path.join(os.path.dirname(__file__)),
+        )
+        if result.returncode == 0:
+            logger.info("[startup] Alembic migrations applied successfully")
+        else:
+            logger.warning("[startup] Alembic migration warning: %s", result.stderr[:500])
+    except Exception as e:
+        logger.warning("[startup] Alembic migration skipped: %s", e)
+
     from src.utils.s3 import ensure_bucket
     ensure_bucket()
     yield

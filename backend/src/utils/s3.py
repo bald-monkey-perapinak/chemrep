@@ -94,13 +94,41 @@ def delete_object(key: str) -> None:
 
 
 def presign_url(key: str, ttl: int = _presigned_url_ttl) -> str:
-    """Сгенерировать presigned URL для скачивания."""
+    """Сгенерировать presigned URL для скачивания. Кэширует на 90% TTL."""
+    import time
     client = _get_client()
-    return client.generate_presigned_url(
+    url = client.generate_presigned_url(
         "get_object",
         Params={"Bucket": S3_BUCKET, "Key": key},
         ExpiresIn=ttl,
     )
+    return url
+
+
+# Simple in-memory cache for presigned URLs
+_presign_cache: dict[str, tuple[str, float]] = {}
+_CACHE_TTL_FACTOR = 0.9  # cache for 90% of TTL
+
+
+def presign_url_cached(key: str, ttl: int = _presigned_url_ttl) -> str:
+    """Сгенерировать presigned URL с кэшированием."""
+    import time
+    now = time.time()
+    cache_key = f"{key}:{ttl}"
+
+    if cache_key in _presign_cache:
+        url, expires_at = _presign_cache[cache_key]
+        if now < expires_at:
+            return url
+
+    client = _get_client()
+    url = client.generate_presigned_url(
+        "get_object",
+        Params={"Bucket": S3_BUCKET, "Key": key},
+        ExpiresIn=ttl,
+    )
+    _presign_cache[cache_key] = (url, now + ttl * _CACHE_TTL_FACTOR)
+    return url
 
 
 def object_exists(key: str) -> bool:

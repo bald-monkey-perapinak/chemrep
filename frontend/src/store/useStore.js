@@ -87,44 +87,35 @@ export const useStore = create((set, get) => ({
   fetchKbTree: async () => {
     set({ kbLoading: true })
     try {
-      const classes = await api.listClasses()
-      const tree = await Promise.all(
-        (classes || []).map(async (cls) => {
-          try {
-            const full = await api.getClassTree(cls.id)
-            return {
-              id: full.id,
-              type: 'folder',
-              name: full.name,
-              children: (full.sections || []).map(sec => ({
-                id: sec.id,
-                type: 'folder',
-                name: sec.name,
-                children: (sec.topics || []).map(top => ({
-                  id: top.id,
-                  type: 'topic',
-                  name: top.name,
-                  lesson_script: top.lesson_script || [],
-                  files: (top.files || []).map(f => ({
-                    id: f.id,
-                    name: f.original_name,
-                    size: f.size_bytes
-                      ? f.size_bytes > 1048576
-                        ? (f.size_bytes / 1048576).toFixed(1) + ' МБ'
-                        : Math.round(f.size_bytes / 1024) + ' КБ'
-                      : '—',
-                    date: f.uploaded_at
-                      ? new Date(f.uploaded_at).toLocaleDateString('ru')
-                      : '—',
-                  })),
-                })),
-              })),
-            }
-          } catch {
-            return { id: cls.id, type: 'folder', name: cls.name, children: [] }
-          }
-        })
-      )
+      const fullTree = await api.getFullTree()
+      const tree = (fullTree || []).map(cls => ({
+        id: cls.id,
+        type: 'folder',
+        name: cls.name,
+        children: (cls.sections || []).map(sec => ({
+          id: sec.id,
+          type: 'folder',
+          name: sec.name,
+          children: (sec.topics || []).map(top => ({
+            id: top.id,
+            type: 'topic',
+            name: top.name,
+            lesson_script: top.lesson_script || [],
+            files: (top.files || []).map(f => ({
+              id: f.id,
+              name: f.original_name,
+              size: f.size_bytes
+                ? f.size_bytes > 1048576
+                  ? (f.size_bytes / 1048576).toFixed(1) + ' МБ'
+                  : Math.round(f.size_bytes / 1024) + ' КБ'
+                : '—',
+              date: f.uploaded_at
+                ? new Date(f.uploaded_at).toLocaleDateString('ru')
+                : '—',
+            })),
+          })),
+        })),
+      }))
       set({ kbTree: tree })
     } catch {
       set({ kbTree: [] })

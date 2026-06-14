@@ -18,8 +18,10 @@ Tutor Dialog Engine — профессиональный диалоговый д
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+import random
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -43,6 +45,34 @@ from src.dialog.safety_filter import SafetyFilter
 from src.dialog.topic_guard import TopicGuard
 
 logger = logging.getLogger(__name__)
+
+# Prometheus metrics for LLM monitoring
+try:
+    from prometheus_client import Histogram, Counter, Gauge
+    LLM_LATENCY = Histogram(
+        'llm_request_duration_seconds',
+        'LLM API request duration',
+        ['model', 'status'],
+        buckets=[0.5, 1.0, 2.0, 5.0, 10.0, 25.0],
+    )
+    LLM_TOKENS = Counter(
+        'llm_tokens_total',
+        'Total LLM tokens used',
+        ['model', 'type'],
+    )
+    LLM_ERRORS = Counter(
+        'llm_errors_total',
+        'Total LLM API errors',
+        ['model', 'error_type'],
+    )
+    LLM_RETRIES = Counter(
+        'llm_retries_total',
+        'Total LLM API retries',
+        ['model'],
+    )
+    _HAS_METRICS = True
+except ImportError:
+    _HAS_METRICS = False
 
 # Модель Claude для диалога (конфигурируется через env)
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
@@ -488,39 +518,109 @@ class TutorDialogEngine:
             teaching_style=self._teaching_style,
         )
 
-        # 10. Вызвать Claude API
-        try:
-            resp = await self._client.post(
-                API_URL,
-                json={
-                    "model": CLAUDE_MODEL,
-                    "max_tokens": MAX_TOKENS,
-                    "system": system_prompt,
-                    "messages": messages,
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-        except httpx.HTTPStatusError as e:
-            logger.error("[TutorEngine] HTTP %s: %s", e.response.status_code, e.response.text[:300])
-            return TutorResponse(
-                text="Позволь секунду подумать... Можешь повторить вопрос?",
-                intent=intent,
-                strategy=strategy,
-                understanding=understanding,
-            )
-        except Exception as e:
-            logger.error("[TutorEngine] Ошибка запроса: %s", e)
-            return TutorResponse(
-                text="Не расслышал. Повтори, пожалуйста.",
-                intent=intent,
-                strategy=strategy,
-                understanding=understanding,
-            )
+        # 10. Вызвать Claude API с retry/backoff
+        import time as _time
+        reply_text = None
+        tokens = 0
+        max_retries = 3
+        request_start = _time.monotonic()
+        last_error_type = None
+        for attempt in range(max_retries):
+            try:
+                resp = await self._client.post(
+                    API_URL,
+                    json={
+                        "model": CLAUDE_MODEL,
+                        "max_tokens": MAX_TOKENS,
+                        "system": system_prompt,
+                        "messages": messages,
+                    },
+                )
+                if resp.status_code == 429:
+                    retry_after = float(resp.headers.get("retry-after", 1))
+                    wait = max(retry_after, 2 ** attempt + random.uniform(0, 1))
+                    logger.warning(
+                        "[TutorEngine] Rate limited (429), retry in %.1fs (attempt %d/%d)",
+                        wait, attempt + 1, max_retries,
+                    )
+                    if _HAS_METRICS:
+                        LLM_RETRIES.labels(model=CLAUDE_MODEL).inc()
+                    last_error_type = "rate_limit"
+                    await asyncio.sleep(wait)
+                    continue
+                if resp.status_code >= 500:
+                    wait = 2 ** attempt + random.uniform(0, 1)
+                    logger.warning(
+                        "[TutorEngine] Server error %d, retry in %.1fs (attempt %d/%d)",
+                        resp.status_code, wait, attempt + 1, max_retries,
+                    )
+                    if _HAS_METRICS:
+                        LLM_RETRIES.labels(model=CLAUDE_MODEL).inc()
+                    last_error_type = f"http_{resp.status_code}"
+                    await asyncio.sleep(wait)
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                reply_text = self._extract_reply(data)
+                tokens = data.get("usage", {}).get("output_tokens", 0)
+                if _HAS_METRICS:
+                    latency = _time.monotonic() - request_start
+                    LLM_LATENCY.labels(model=CLAUDE_MODEL, status="success").observe(latency)
+                    LLM_TOKENS.labels(model=CLAUDE_MODEL, type="output").inc(tokens)
+                    input_tokens = data.get("usage", {}).get("input_tokens", 0)
+                    if input_tokens:
+                        LLM_TOKENS.labels(model=CLAUDE_MODEL, type="input").inc(input_tokens)
+                break
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code in (429, 500, 502, 503) and attempt < max_retries - 1:
+                    wait = 2 ** attempt + random.uniform(0, 1)
+                    logger.warning(
+                        "[TutorEngine] HTTP %s, retry in %.1fs (attempt %d/%d)",
+                        e.response.status_code, wait, attempt + 1, max_retries,
+                    )
+                    if _HAS_METRICS:
+                        LLM_RETRIES.labels(model=CLAUDE_MODEL).inc()
+                    last_error_type = f"http_{e.response.status_code}"
+                    await asyncio.sleep(wait)
+                    continue
+                logger.error("[TutorEngine] HTTP %s: %s", e.response.status_code, e.response.text[:300])
+                if _HAS_METRICS:
+                    LLM_ERRORS.labels(model=CLAUDE_MODEL, error_type=f"http_{e.response.status_code}").inc()
+                return TutorResponse(
+                    text="Позволь секунду подумать... Можешь повторить вопрос?",
+                    intent=intent,
+                    strategy=strategy,
+                    understanding=understanding,
+                )
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    wait = 2 ** attempt + random.uniform(0, 1)
+                    logger.warning(
+                        "[TutorEngine] Request error: %s, retry in %.1fs (attempt %d/%d)",
+                        e, wait, attempt + 1, max_retries,
+                    )
+                    if _HAS_METRICS:
+                        LLM_RETRIES.labels(model=CLAUDE_MODEL).inc()
+                    last_error_type = "network"
+                    await asyncio.sleep(wait)
+                    continue
+                logger.error("[TutorEngine] Ошибка запроса: %s", e)
+                if _HAS_METRICS:
+                    LLM_ERRORS.labels(model=CLAUDE_MODEL, error_type="network").inc()
+                return TutorResponse(
+                    text="Не расслышал. Повтори, пожалуйста.",
+                    intent=intent,
+                    strategy=strategy,
+                    understanding=understanding,
+                )
 
-        # 11. Извлечь текст ответа
-        reply_text = self._extract_reply(data)
-        tokens = data.get("usage", {}).get("output_tokens", 0)
+        if reply_text is None:
+            return TutorResponse(
+                text="Не удалось получить ответ. Давай продолжим урок.",
+                intent=intent,
+                strategy=strategy,
+                understanding=understanding,
+            )
 
         # 12. Постобработка ответа с учётом эмоций
         emotion = self._estimate_emotion(intent, understanding)

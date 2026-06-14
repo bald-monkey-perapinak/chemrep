@@ -102,6 +102,20 @@ def list_classes(db: Session, teacher_id: UUID) -> list[KnowledgeClass]:
     )
 
 
+def get_full_tree(db: Session, teacher_id: UUID) -> list[KnowledgeClass]:
+    """Все классы с полным деревом: секции → темы. Один запрос вместо N+1."""
+    return (
+        db.query(KnowledgeClass)
+        .options(
+            selectinload(KnowledgeClass.sections)
+            .selectinload(KnowledgeSection.topics)
+        )
+        .filter(KnowledgeClass.teacher_id == teacher_id)
+        .order_by(KnowledgeClass.sort_order, KnowledgeClass.created_at)
+        .all()
+    )
+
+
 def get_class_tree(db: Session, class_id: UUID, teacher_id: UUID) -> KnowledgeClass:
     """Класс с полным деревом: секции → темы."""
     obj = (

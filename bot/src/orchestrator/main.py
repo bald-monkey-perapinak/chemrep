@@ -31,21 +31,11 @@ for p in (_bot_root, _backend_root):
 
 from config.settings import config
 from src.orchestrator.scheduler import Scheduler
-
-
-def setup_logging() -> None:
-    logging.basicConfig(
-        level=getattr(logging, config.log_level.upper(), logging.INFO),
-        format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
-    # Заглушить шумные библиотеки
-    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.WARNING)
+from src.logging_config import setup_logging
 
 
 async def main() -> None:
-    setup_logging()
+    setup_logging(config.log_level)
     logger = logging.getLogger("bot.main")
     logger.info("=" * 60)
     logger.info("ХимТьютор Bot запущен")

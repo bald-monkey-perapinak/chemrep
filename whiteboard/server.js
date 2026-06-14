@@ -12,6 +12,15 @@ const PORT = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || '';
 const JWT_STUB_MODE = process.env.BOARD_STUB_MODE === 'true';
 
+if (!JWT_SECRET && !JWT_STUB_MODE) {
+  const isProd = (process.env.APP_ENV || 'development').toLowerCase() === 'production';
+  if (isProd) {
+    console.error('[board] CRITICAL: JWT_SECRET not set in production. Exiting.');
+    process.exit(1);
+  }
+  console.warn('[board] WARNING: JWT_SECRET not set — all connections will be rejected');
+}
+
 const app = express();
 const server = createServer(app);
 
@@ -23,7 +32,12 @@ const wss = new WebSocketServer({ server });
 const rooms = new Map();
 
 function verifyToken(token) {
-  if (!JWT_SECRET || JWT_STUB_MODE) return true;
+  if (JWT_STUB_MODE) return true;
+  if (!JWT_SECRET) {
+    console.warn('[board] WARNING: JWT_SECRET not set — rejecting all connections');
+    return false;
+  }
+  if (!token) return false;
   try {
     jwt.verify(token, JWT_SECRET);
     return true;
@@ -58,7 +72,16 @@ wss.on('connection', (ws, req) => {
 
   ws.on('message', (data) => {
     try {
-      const msg = JSON.parse(data.toString());
+      const raw = data.toString();
+      if (raw.length > 64 * 1024) {
+        console.warn('[board] Message too large, dropping');
+        return;
+      }
+      const msg = JSON.parse(raw);
+      if (!msg || typeof msg.type !== 'string') {
+        console.warn('[board] Invalid message format: missing type');
+        return;
+      }
       broadcast(sessionId, msg, ws);
     } catch (e) {
       console.error('[board] Invalid message:', e.message);
@@ -101,3 +124,25 @@ app.get('/health', (req, res) => {
 server.listen(PORT, () => {
   console.log(`[board] Whiteboard server running on port ${PORT}`);
 });
+
+// Graceful shutdown
+function shutdown() {
+  console.log('[board] Shutting down...');
+  for (const [sessionId, room] of rooms) {
+    for (const client of room) {
+      try {
+        client.close(1001, 'Server shutting down');
+      } catch {}
+    }
+    room.clear();
+  }
+  rooms.clear();
+  server.close(() => {
+    console.log('[board] Server closed');
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 5000);
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

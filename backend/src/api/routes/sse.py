@@ -35,24 +35,14 @@ from src.db.base import get_db
 from src.events.bus import event_bus
 from src.models.lesson import Lesson
 from src.models.teacher import Teacher
-import os
+from src.config.jwt import get_jwt_secret, ALGORITHM
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/sse", tags=["sse"])
 
 HEARTBEAT_INTERVAL = 15   # секунд
-ALGORITHM   = "HS256"
-
-def _get_jwt_secret() -> str:
-    secret = os.getenv("JWT_SECRET", "")
-    if not secret:
-        import secrets
-        secret = secrets.token_hex(32)
-        os.environ["JWT_SECRET"] = secret
-    return secret
-
-SECRET_KEY = _get_jwt_secret()
+SECRET_KEY = get_jwt_secret()
 
 
 # ── Auth через query-параметр (EventSource не поддерживает заголовки) ─────
@@ -160,14 +150,19 @@ async def lesson_events(
     }
     await queue.put(initial)
 
+    import os as _os
+    cors_origin = _os.getenv("CORS_ORIGINS", "http://localhost:3000")
+    if "," in cors_origin:
+        cors_origin = cors_origin.split(",")[0].strip()
+
     return StreamingResponse(
         _event_generator(str(lesson_id), queue),
         media_type="text/event-stream",
         headers={
             "Cache-Control":       "no-cache",
-            "X-Accel-Buffering":   "no",   # отключить буферизацию Nginx
+            "X-Accel-Buffering":   "no",
             "Connection":          "keep-alive",
-            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Origin": cors_origin,
         },
     )
 

@@ -97,7 +97,7 @@ class PiperTTS(BaseTTS):
             if self._voice is not None:
                 return
             logger.info("[Piper] Загружаем модель %s...", self._model)
-            self._voice = await asyncio.get_event_loop().run_in_executor(
+            self._voice = await asyncio.get_running_loop().run_in_executor(
                 None, self._load
             )
             logger.info("[Piper] Модель загружена")
@@ -117,7 +117,7 @@ class PiperTTS(BaseTTS):
         if not text.strip():
             return b""
         await self._ensure_loaded()
-        return await asyncio.get_event_loop().run_in_executor(
+        return await asyncio.get_running_loop().run_in_executor(
             None, self._synth_sync, text
         )
 
@@ -160,7 +160,7 @@ class SileroTTS(BaseTTS):
             if self._model is not None:
                 return
             logger.info("[Silero] Загружаем модель...")
-            self._model = await asyncio.get_event_loop().run_in_executor(
+            self._model = await asyncio.get_running_loop().run_in_executor(
                 None, self._load_model
             )
             logger.info("[Silero] Модель загружена")
@@ -182,7 +182,7 @@ class SileroTTS(BaseTTS):
         if not text.strip():
             return b""
         await self._ensure_loaded()
-        return await asyncio.get_event_loop().run_in_executor(
+        return await asyncio.get_running_loop().run_in_executor(
             None, self._synth_sync, text
         )
 
@@ -247,7 +247,7 @@ class ElevenLabsTTS(BaseTTS):
             )
             resp.raise_for_status()
             mp3_bytes = resp.content
-            return await asyncio.get_event_loop().run_in_executor(
+            return await asyncio.get_running_loop().run_in_executor(
                 None, _mp3_to_pcm16k, mp3_bytes
             )
         except Exception as e:

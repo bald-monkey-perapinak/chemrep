@@ -1,6 +1,6 @@
 import logging
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -18,26 +18,25 @@ class LLMVersionManager:
         self.current_model = {
             "name": model_name,
             "version": version,
-            "set_at": datetime.utcnow().isoformat()
+            "set_at": datetime.now(timezone.utc).isoformat()
         }
         self.version_history.append(self.current_model)
-        logger.info(f"LLM model set to {model_name} (version: {version})")
+        logger.info("LLM model set to %s (version: %s)", model_name, version)
     
-    def record_quality(self, response_quality: float) -> None:
-        """Record response quality metric."""
+    def record_quality(self, response_quality: float) -> bool:
+        """Record response quality metric. Returns True if degradation detected."""
         self.quality_metrics.append({
             "model": self.current_model["name"] if self.current_model else "unknown",
             "quality": response_quality,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         })
         
-        # Check for quality degradation
         if len(self.quality_metrics) >= 10:
             recent = self.quality_metrics[-10:]
             avg_quality = sum(m["quality"] for m in recent) / len(recent)
             
             if avg_quality < 0.6:
-                logger.warning(f"LLM quality degradation detected: avg={avg_quality:.2f}")
+                logger.warning("LLM quality degradation detected: avg=%.2f", avg_quality)
                 return True
         
         return False

@@ -140,7 +140,7 @@ class WhisperTranscriber:
             if self._model is not None:
                 return
             logger.info("[Whisper] Загружаем модель '%s'...", self._model_size)
-            self._model = await asyncio.get_event_loop().run_in_executor(
+            self._model = await asyncio.get_running_loop().run_in_executor(
                 None, self._load
             )
             logger.info("[Whisper] Модель готова")
@@ -164,7 +164,7 @@ class WhisperTranscriber:
         if len(pcm) < FRAME_BYTES * 5:   # слишком короткий сигнал
             return ""
         await self._ensure_loaded()
-        return await asyncio.get_event_loop().run_in_executor(
+        return await asyncio.get_running_loop().run_in_executor(
             None, self._transcribe_sync, pcm
         )
 
@@ -229,11 +229,11 @@ class ASRPipeline:
             async for phrase in asr.listen(vcs, timeout=15.0):
                 print("Ученик сказал:", phrase)
         """
-        deadline = asyncio.get_event_loop().time() + timeout
+        deadline = asyncio.get_running_loop().time() + timeout
         self._buffer.reset()
         raw_buf = b""
 
-        while asyncio.get_event_loop().time() < deadline:
+        while asyncio.get_running_loop().time() < deadline:
             chunk = await vcs_client.recv_audio()
             if not chunk:
                 continue

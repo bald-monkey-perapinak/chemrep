@@ -12,9 +12,10 @@ async function tryRefreshToken() {
   const refreshToken = getRefreshToken()
   if (!refreshToken) return false
   try {
-    const res = await fetch(`${BASE}/auth/refresh?refresh_token=${encodeURIComponent(refreshToken)}`, {
+    const res = await fetch(`${BASE}/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
     })
     if (!res.ok) return false
     const data = await res.json()
@@ -114,6 +115,7 @@ export const api = {
 
   // ── Knowledge ───────────────────────────────────────────────────────────
   listClasses:     ()              => request('GET',    '/knowledge/classes'),
+  getFullTree:     ()              => request('GET',    '/knowledge/tree'),
   createClass:     (data)          => request('POST',   '/knowledge/classes', data),
   updateClass:     (id, data)      => request('PATCH',  `/knowledge/classes/${id}`, data),
   deleteClass:     (id)            => request('DELETE', `/knowledge/classes/${id}`),

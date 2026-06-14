@@ -15,7 +15,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session, joinedload
 
 from src.db.base import get_db
@@ -34,10 +34,32 @@ class LessonCreate(BaseModel):
     student_id:   Optional[str]  = None
     topic_id:     Optional[str]  = None
     scheduled_at: datetime
-    duration_min: int             = 60
+    duration_min: int             = Field(default=60, ge=15, le=240)
     vcs_platform: str             = "zoom"
     vcs_link:     Optional[str]  = None
     notes:        Optional[str]  = None
+
+    @field_validator('vcs_platform')
+    @classmethod
+    def validate_vcs_platform(cls, v):
+        allowed = {'zoom', 'yandex', 'meet'}
+        if v.lower() not in allowed:
+            raise ValueError(f'vcs_platform must be one of: {", ".join(allowed)}')
+        return v.lower()
+
+    @field_validator('vcs_link')
+    @classmethod
+    def validate_vcs_link(cls, v):
+        if v is not None and len(v) > 1000:
+            raise ValueError('vcs_link must be at most 1000 characters')
+        return v
+
+    @field_validator('notes')
+    @classmethod
+    def validate_notes(cls, v):
+        if v is not None and len(v) > 5000:
+            raise ValueError('notes must be at most 5000 characters')
+        return v
 
 class LessonUpdate(BaseModel):
     student_id:   Optional[str]  = None
@@ -47,6 +69,33 @@ class LessonUpdate(BaseModel):
     vcs_link:     Optional[str]  = None
     notes:        Optional[str]  = None
     status:       Optional[str]  = None
+
+    @field_validator('vcs_platform')
+    @classmethod
+    def validate_vcs_platform(cls, v):
+        if v is not None:
+            allowed = {'zoom', 'yandex', 'meet'}
+            if v.lower() not in allowed:
+                raise ValueError(f'vcs_platform must be one of: {", ".join(allowed)}')
+            return v.lower()
+        return v
+
+    @field_validator('status')
+    @classmethod
+    def validate_status(cls, v):
+        if v is not None:
+            allowed = {'scheduled', 'in_progress', 'completed', 'cancelled', 'missed'}
+            if v.lower() not in allowed:
+                raise ValueError(f'status must be one of: {", ".join(allowed)}')
+            return v.lower()
+        return v
+
+    @field_validator('notes')
+    @classmethod
+    def validate_notes(cls, v):
+        if v is not None and len(v) > 5000:
+            raise ValueError('notes must be at most 5000 characters')
+        return v
 
 class SessionOut(BaseModel):
     status:        str

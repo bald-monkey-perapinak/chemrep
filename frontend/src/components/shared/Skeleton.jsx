@@ -50,3 +50,16 @@ export function SkeletonStudents() {
     </div>
   )
 }
+
+export function SkeletonDashboard() {
+  return (
+    <div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
+        {Array.from({ length: 3 }).map((_, i) => (
+          <SkeletonCard key={i} lines={2} />
+        ))}
+      </div>
+      <SkeletonCard lines={4} />
+    </div>
+  )
+}

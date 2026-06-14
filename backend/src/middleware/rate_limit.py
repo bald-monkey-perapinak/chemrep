@@ -2,6 +2,7 @@
 In-memory sliding window rate limiter middleware for FastAPI.
 
 Supports per-path limits: auth endpoints get stricter limits.
+Periodic cleanup prevents unbounded memory growth.
 """
 
 import time
@@ -17,6 +18,10 @@ PATH_LIMITS: dict[str, tuple[int, int]] = {
     "/api/auth/register": (3, 300),   # 3 registrations per 5 minutes
 }
 
+# Cleanup interval: purge keys older than this many seconds
+_CLEANUP_INTERVAL = 300  # every 5 minutes
+_MAX_KEY_AGE = 600       # discard entries older than 10 minutes
+
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, max_requests: int = 30, window_seconds: int = 60):
@@ -24,6 +29,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self.default_max = max_requests
         self.default_window = window_seconds
         self._requests: dict[str, list[float]] = defaultdict(list)
+        self._last_cleanup = time.time()
 
     def _client_ip(self, request: Request) -> str:
         forwarded = request.headers.get("x-forwarded-for")
@@ -37,10 +43,26 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 return limits
         return self.default_max, self.default_window
 
+    def _maybe_cleanup(self) -> None:
+        """Remove stale keys to prevent memory leak."""
+        now = time.time()
+        if now - self._last_cleanup < _CLEANUP_INTERVAL:
+            return
+        self._last_cleanup = now
+        cutoff = now - _MAX_KEY_AGE
+        stale_keys = [
+            key for key, timestamps in self._requests.items()
+            if not timestamps or timestamps[-1] < cutoff
+        ]
+        for key in stale_keys:
+            del self._requests[key]
+
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         if path.startswith("/health"):
             return await call_next(request)
+
+        self._maybe_cleanup()
 
         ip = self._client_ip(request)
         max_req, window = self._get_limits(path)

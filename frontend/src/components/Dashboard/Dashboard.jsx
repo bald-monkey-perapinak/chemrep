@@ -1,5 +1,6 @@
 import { useStore } from '../../store/useStore'
 import { fmtDt } from '../../utils/helpers'
+import { SkeletonDashboard } from '../shared/Skeleton'
 
 export default function Dashboard() {
   const lessons  = useStore(s => s.lessons)
@@ -9,7 +10,7 @@ export default function Dashboard() {
   const studentsLoading = useStore(s => s.studentsLoading)
 
   if (lessonsLoading || studentsLoading) {
-    return <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>Загрузка...</div>
+    return <SkeletonDashboard />
   }
 
   const today = new Date().toISOString().slice(0, 10)

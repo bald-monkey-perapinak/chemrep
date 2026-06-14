@@ -73,11 +73,10 @@ def index_topic_script(db: Session, topic: KnowledgeTopic, teacher_id: UUID) -> 
             topic_id=topic.id,
             teacher_id=teacher_id,
         )
-        # Устанавливаем pgvector-столбец если доступен
         try:
             emb.embedding = embedding
-        except Exception:
-            pass
+        except (AttributeError, TypeError) as e:
+            logger.debug("[Embeddings] pgvector column not available: %s", e)
         db.add(emb)
         count += 1
 
@@ -122,8 +121,8 @@ def index_topic_file(db: Session, file: TopicFile, extracted_text: str, teacher_
         )
         try:
             emb.embedding = embedding
-        except Exception:
-            pass
+        except (AttributeError, TypeError) as e:
+            logger.debug("[Embeddings] pgvector column not available: %s", e)
         db.add(emb)
         count += 1
 
@@ -159,8 +158,8 @@ def index_topic_meta(db: Session, topic: KnowledgeTopic, teacher_id: UUID) -> in
     )
     try:
         emb.embedding = embedding
-    except Exception:
-        pass
+    except (AttributeError, TypeError) as e:
+        logger.debug("[Embeddings] pgvector column not available: %s", e)
     db.add(emb)
     db.commit()
     return 1

@@ -42,13 +42,13 @@ function AppShell() {
   const [lessonModalDate, setLessonModalDate] = useState(null)
   const [monitorLessonId, setMonitorLessonId] = useState(null)
 
-  const isOffline = useOffline()
+  const { isOffline, retry } = useOffline()
 
   useEffect(() => {
     fetchStudents()
     fetchLessons()
     fetchKbTree()
-  }, [])
+  }, [fetchStudents, fetchLessons, fetchKbTree])
 
   useEffect(() => { window.__openMonitor = setMonitorLessonId }, [])
 
@@ -103,9 +103,27 @@ function AppShell() {
             background: 'var(--color-warning)',
             color: 'white',
             padding: '8px 16px',
-            textAlign: 'center'
+            textAlign: 'center',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
           }}>
             Нет подключения к интернету
+            <button
+              onClick={retry}
+              style={{
+                background: 'rgba(255,255,255,0.2)',
+                border: '1px solid rgba(255,255,255,0.3)',
+                color: 'white',
+                padding: '4px 12px',
+                borderRadius: 4,
+                cursor: 'pointer',
+                fontSize: 12,
+              }}
+            >
+              Повторить
+            </button>
           </div>
         )}
         <div className="content">

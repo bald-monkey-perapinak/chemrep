@@ -44,7 +44,7 @@ services:
       - S3_BUCKET=${S3_BUCKET:-chemrep-files}
       - EMBEDDING_MODEL=paraphrase-multilingual-MiniLM-L12-v2
       - JWT_SECRET=${JWT_SECRET}
-      - CORS_ORIGINS=${CORS_ORIGINS}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://localhost:3000,http://localhost:5173}
     depends_on:
       postgres:
         condition: service_healthy
@@ -80,7 +80,7 @@ services:
       - BOARD_WS_URL=ws://whiteboard:3001
       - BOARD_STUB_MODE=false
       - JWT_SECRET=${JWT_SECRET}
-      - CORS_ORIGINS=${CORS_ORIGINS}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://localhost:3000,http://localhost:5173}
     depends_on:
       backend:
         condition: service_started
@@ -89,7 +89,7 @@ services:
       whiteboard:
         condition: service_started
     healthcheck:
-      test: ["CMD", "python", "-c", "import os; os.environ.get('DATABASE_URL') and exit(0) or exit(1)"]
+      test: ["CMD", "python", "-c", "import psycopg2, os; conn = psycopg2.connect(os.environ['DATABASE_URL']); conn.close()"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -142,12 +142,13 @@ services:
     image: minio/minio
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD in .env}
     volumes:
       - minio_data:/data
-    ports:
-      - "9000:9000"
+    expose:
+      - "9000"
+      - "9001"
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
@@ -173,7 +174,7 @@ services:
     expose:
       - "3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
       - GF_AUTH_ANONYMOUS_ENABLED=false
 
 volumes:

@@ -19,31 +19,11 @@ from sqlalchemy.orm import Session
 
 from src.db.base import get_db
 from src.models.teacher import Teacher
+from src.config.jwt import get_jwt_secret, ALGORITHM, ACCESS_TOKEN_EXPIRE_MIN, REFRESH_TOKEN_EXPIRE_D
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# ── Конфиг JWT ────────────────────────────────────────────────────────────
-import os
-import secrets
-
-def _get_jwt_secret() -> str:
-    """Получить JWT секрет. В продакшене ОБЯЗАТЕЛЬНО задать JWT_SECRET."""
-    secret = os.getenv("JWT_SECRET", "")
-    if not secret:
-        # Генерируем при первом запуске (для dev) — в prod перезапись!
-        secret = secrets.token_hex(32)
-        os.environ["JWT_SECRET"] = secret
-        import logging
-        logging.getLogger(__name__).warning(
-            "[AUTH] JWT_SECRET не задан! Сгенерирован временный ключ. "
-            "В продакшене задайте JWT_SECRET в .env!"
-        )
-    return secret
-
-SECRET_KEY              = _get_jwt_secret()
-ALGORITHM               = "HS256"
-ACCESS_TOKEN_EXPIRE_MIN = 30      # access token живёт 30 минут
-REFRESH_TOKEN_EXPIRE_D  = 30      # refresh token живёт 30 дней
+SECRET_KEY = get_jwt_secret()
 
 pwd_ctx    = None  # removed, using bcrypt directly
 oauth2     = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -56,10 +36,20 @@ class RegisterRequest(BaseModel):
     password:   str = Field(..., min_length=8)
     full_name:  str = Field(..., min_length=2)
 
+    def validate_password(cls, v):
+        if not any(c.isupper() for c in v):
+            raise ValueError("Пароль должен содержать хотя бы одну заглавную букву")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Пароль должен содержать хотя бы одну цифру")
+        return v
+
 class LoginResponse(BaseModel):
     access_token:  str
     refresh_token: str
     token_type:    str = "bearer"
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
 
 class TeacherOut(BaseModel):
     model_config = {"from_attributes": True, "protected_namespaces": ()}
@@ -171,15 +161,15 @@ def login(
 @router.post("/refresh", response_model=LoginResponse,
              summary="Обновить токены по refresh token")
 def refresh_token(
-    refresh_token: str,
-    db:            Session = Depends(get_db),
+    data:  RefreshRequest,
+    db:    Session = Depends(get_db),
 ):
     cred_exc = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Недействительный refresh token",
     )
     try:
-        payload    = jwt.decode(refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        payload    = jwt.decode(data.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
         teacher_id = payload.get("sub")
         token_type = payload.get("type")
         if not teacher_id or token_type != "refresh":

@@ -20,6 +20,7 @@ from src.api.versioned import versioned_router
 from src.middleware.metrics import MetricsMiddleware
 from src.middleware.rate_limit import RateLimitMiddleware
 from src.middleware.request_id import RequestIDMiddleware
+from src.middleware.body_limit import BodyLimitMiddleware
 from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 from src.api.routes.auth      import router as auth_router
 from src.api.routes.knowledge  import router as knowledge_router
@@ -60,6 +61,10 @@ _cors_origins_str = os.getenv(
 )
 _cors_origins = [o.strip() for o in _cors_origins_str.split(",") if o.strip()]
 
+import logging as _logging
+_cors_logger = _logging.getLogger("chemrep.cors")
+_cors_logger.info("CORS allowed origins: %s", _cors_origins)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
@@ -70,6 +75,7 @@ app.add_middleware(
 
 app.add_middleware(MetricsMiddleware)
 app.add_middleware(RateLimitMiddleware, max_requests=30, window_seconds=60)
+app.add_middleware(BodyLimitMiddleware, max_body_size=100 * 1024 * 1024)
 app.add_middleware(RequestIDMiddleware)
 
 

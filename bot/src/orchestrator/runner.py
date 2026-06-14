@@ -45,6 +45,9 @@ from src.dialog.lesson_summary import generate_lesson_summary, format_summary_fo
 from src.board.client import make_board_client, BaseBoardClient
 from src.orchestrator.homework import deliver_homework
 from src.orchestrator.checkpoint import LessonCheckpoint
+from src.orchestrator.reconnect import ReconnectManager, is_connection_error
+from src.orchestrator.audio_pipeline import AudioPipeline
+from src.logging_config import set_lesson_context
 
 # EventBus из backend — публикуем события для SSE
 import sys as _sys, os as _os
@@ -61,9 +64,6 @@ logger = logging.getLogger(__name__)
 
 LISTEN_TIMEOUT = 12.0
 STEP_PAUSE     = 1.0
-CHUNK_SIZE     = 640    # 20 мс PCM @ 16kHz 16-bit mono
-MAX_RECONNECT_ATTEMPTS = 3
-RECONNECT_DELAYS = [5, 15, 45]  # секунды между попытками (exponential backoff)
 STUDENT_CONNECT_TIMEOUT = 600  # 10 minutes
 STUDENT_CONNECT_CHECK_INTERVAL = 30  # Check every 30 seconds
 
@@ -80,15 +80,17 @@ class LessonRunner:
         self._board: BaseBoardClient | None = None
         self._dialog: list[dict] = []
         self._events: list[dict] = []
-        self._reconnect_count = 0
         self._checkpoint = LessonCheckpoint(db)
         self._recording_allowed = False
+        self._audio_pipeline: AudioPipeline | None = None
+        self._reconnect: ReconnectManager | None = None
 
     # ──────────────────────────────────────────────────────────────────────
     # Публичный API
     # ──────────────────────────────────────────────────────────────────────
 
     async def run(self) -> None:
+        set_lesson_context(str(self.lesson.id))
         try:
             await self._prepare()
             await self._init_audio()
@@ -105,6 +107,7 @@ class LessonRunner:
             await self._mark_failed(str(exc))
         finally:
             await self._cleanup()
+            set_lesson_context(None)
 
     # ──────────────────────────────────────────────────────────────────────
     # Инициализация
@@ -211,6 +214,18 @@ class LessonRunner:
         self._vcs = make_vcs_client(info)
         await self._vcs.connect()
 
+        # Инициализируем пайплайн аудио и менеджер переподключения
+        self._audio_pipeline = AudioPipeline(
+            tts=self._tts,
+            vcs=self._vcs,
+            dialog_log=self._dialog,
+            lesson_id=lesson.id,
+        )
+        self._reconnect = ReconnectManager(
+            on_reconnect=self._do_reconnect_vcs,
+            on_event=self._log_event,
+        )
+
         self.session.status        = SessionStatus.ACTIVE
         self.session.bot_joined_at = datetime.now(timezone.utc)
         self.db.commit()
@@ -227,9 +242,9 @@ class LessonRunner:
         Wait for student to connect to the conference.
         Returns True if student connected, False on timeout.
         """
-        start_time = asyncio.get_event_loop().time()
-        
-        while asyncio.get_event_loop().time() - start_time < timeout:
+        start_time = asyncio.get_running_loop().time()
+
+        while asyncio.get_running_loop().time() - start_time < timeout:
             # Check if student is in the conference
             if self._vcs and self._vcs.student_connected():
                 logger.info(f"[runner {self.lesson.id}] Student connected")
@@ -448,7 +463,7 @@ class LessonRunner:
         Слушаем вопросы ученика в течение timeout секунд.
         На каждую распознанную фразу генерируем LLM-ответ и озвучиваем.
         """
-        deadline = asyncio.get_event_loop().time() + timeout
+        deadline = asyncio.get_running_loop().time() + timeout
         async for phrase in self._asr.listen(self._vcs, timeout=timeout):
             if not phrase.strip():
                 continue
@@ -500,7 +515,7 @@ class LessonRunner:
             self._publish('bot_reply', {'text': reply})
             await self._speak(reply)
 
-            if asyncio.get_event_loop().time() >= deadline:
+            if asyncio.get_running_loop().time() >= deadline:
                 break
 
     # ──────────────────────────────────────────────────────────────────────
@@ -583,143 +598,60 @@ class LessonRunner:
     # ──────────────────────────────────────────────────────────────────────
 
     async def _speak(self, text: str) -> None:
-        if not text.strip():
-            return
-
-        logger.info("[runner %s] 🔊 %s", self.lesson.id, text[:100])
-        self._dialog.append({
-            "role": "bot",
-            "text": text,
-            "ts":   datetime.now(timezone.utc).isoformat(),
-        })
-
-        try:
-            pcm = await self._tts.synthesize(text)
-        except Exception as e:
-            logger.error("[runner %s] TTS ошибка: %s", self.lesson.id, e)
-            return
-
-        for offset in range(0, len(pcm), CHUNK_SIZE):
-            chunk = pcm[offset: offset + CHUNK_SIZE]
-            if len(chunk) < CHUNK_SIZE:
-                chunk += b"\x00" * (CHUNK_SIZE - len(chunk))
-            await self._vcs.send_audio(chunk)
-            await asyncio.sleep(0.018)
+        """Озвучить текст через AudioPipeline."""
+        await self._audio_pipeline.speak(text)
 
     async def _speak_with_reconnect(self, text: str) -> None:
         """_speak с автоматическим переподключением при ошибке соединения."""
-        try:
-            await self._speak(text)
-        except Exception as e:
-            if self._is_connection_error(e):
-                logger.warning("[runner %s] Потеря соединения при speaking: %s", self.lesson.id, e)
-                if await self._reconnect_vcs():
-                    await self._speak(text)
-                else:
-                    raise
+        await self._reconnect.execute_with_reconnect(
+            lambda: self._speak(text),
+            operation_name="speaking",
+        )
 
     async def _listen_and_respond_with_reconnect(self) -> Optional[TutorResponse]:
         """_listen_and_respond с переподключением."""
-        try:
-            return await self._listen_and_respond()
-        except Exception as e:
-            if self._is_connection_error(e):
-                logger.warning("[runner %s] Потеря соединения при listening: %s", self.lesson.id, e)
-                if await self._reconnect_vcs():
-                    return await self._listen_and_respond()
-                else:
-                    raise
-        return None
+        return await self._reconnect.execute_with_reconnect_return(
+            self._listen_and_respond,
+            operation_name="listening",
+        )
 
     async def _free_dialog_with_reconnect(self, timeout: float = 60.0) -> None:
         """_free_dialog с переподключением."""
-        try:
-            await self._free_dialog(timeout=timeout)
-        except Exception as e:
-            if self._is_connection_error(e):
-                logger.warning("[runner %s] Потеря соединения в free_dialog: %s", self.lesson.id, e)
-                if await self._reconnect_vcs():
-                    await self._free_dialog(timeout=timeout)
-                else:
-                    raise
-
-    @staticmethod
-    def _is_connection_error(exc: Exception) -> bool:
-        """Определить, является ли ошибка потерей соединения VCS."""
-        msg = str(exc).lower()
-        keywords = (
-            "connection", "disconnected", "not connected",
-            "broken pipe", "reset by peer", "eof",
-            "page closed", "target closed", "crash",
-            "websocket", "timeout",
+        await self._reconnect.execute_with_reconnect(
+            lambda: self._free_dialog(timeout=timeout),
+            operation_name="free_dialog",
         )
-        return any(kw in msg for kw in keywords)
 
-    # ──────────────────────────────────────────────────────────────────────
-    # Завершение
-    # ──────────────────────────────────────────────────────────────────────
-
-    # ──────────────────────────────────────────────────────────────────────
-    # Переподключение к VCS
-    # ──────────────────────────────────────────────────────────────────────
-
-    async def _reconnect_vcs(self) -> bool:
-        """
-        Попытка переподключения к конференции.
-        Возвращает True если переподключение успешно.
-        """
-        for attempt in range(MAX_RECONNECT_ATTEMPTS):
-            delay = RECONNECT_DELAYS[min(attempt, len(RECONNECT_DELAYS) - 1)]
-            logger.warning(
-                "[runner %s] Переподключение к VCS (попытка %d/%d, задержка %ds)...",
-                self.lesson.id, attempt + 1, MAX_RECONNECT_ATTEMPTS, delay,
-            )
-            self._log_event("vcs_reconnect_attempt", {
-                "attempt": attempt + 1,
-                "max": MAX_RECONNECT_ATTEMPTS,
-            })
-            self._publish('vcs_reconnect', {
-                'attempt': attempt + 1,
-                'max': MAX_RECONNECT_ATTEMPTS,
-            })
-
-            await asyncio.sleep(delay)
-
+    async def _do_reconnect_vcs(self) -> bool:
+        """Логика переподключения для ReconnectManager."""
+        if self._vcs:
             try:
-                # Отключаем старое соединение
-                if self._vcs:
-                    try:
-                        self._vcs._recorder.stop()
-                    except Exception:
-                        pass
-                    try:
-                        await self._vcs.disconnect()
-                    except Exception:
-                        pass
-
-                # Пересоздаём VCS клиент
-                lesson = self.lesson
-                info = VCSConnectionInfo(
-                    platform=VCSPlatformType(lesson.vcs_platform.value),
-                    link=lesson.vcs_link or "",
-                    display_name=f"Помощник — {lesson.teacher.full_name}",
-                )
-                self._vcs = make_vcs_client(info)
-                await self._vcs.connect()
-                self._vcs.start_recording()
-
-                self._reconnect_count += 1
-                logger.info("[runner %s] VCS переподключён (попытка %d)", self.lesson.id, attempt + 1)
-                self._log_event("vcs_reconnected", {"attempt": attempt + 1})
-                self._publish('vcs_reconnected', {'attempt': attempt + 1})
-                return True
-
+                self._vcs._recorder.stop()
             except Exception as e:
-                logger.warning("[runner %s] Попытка %d/%d не удалась: %s",
-                               self.lesson.id, attempt + 1, MAX_RECONNECT_ATTEMPTS, e)
+                logger.debug("[runner %s] Recorder stop: %s", self.lesson.id, e)
+            try:
+                await self._vcs.disconnect()
+            except Exception as e:
+                logger.debug("[runner %s] VCS disconnect during reconnect: %s", self.lesson.id, e)
 
-        logger.error("[runner %s] Все попытки переподключения исчерпаны", self.lesson.id)
-        return False
+        lesson = self.lesson
+        info = VCSConnectionInfo(
+            platform=VCSPlatformType(lesson.vcs_platform.value),
+            link=lesson.vcs_link or "",
+            display_name=f"Помощник — {lesson.teacher.full_name}",
+        )
+        self._vcs = make_vcs_client(info)
+        await self._vcs.connect()
+        self._vcs.start_recording()
+
+        # Обновляем AudioPipeline с новым VCS
+        self._audio_pipeline = AudioPipeline(
+            tts=self._tts,
+            vcs=self._vcs,
+            dialog_log=self._dialog,
+            lesson_id=lesson.id,
+        )
+        return True
 
     async def _cleanup(self) -> None:
         now = datetime.now(timezone.utc)
@@ -746,8 +678,8 @@ class LessonRunner:
             if resource:
                 try:
                     await resource.close()
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("[runner %s] Resource close: %s", self.lesson.id, e)
 
         if self.session:
             if self.session.status not in (SessionStatus.FAILED,):
@@ -841,8 +773,8 @@ class LessonRunner:
         self._log_event("error", {"reason": reason})
         try:
             self.db.commit()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("[runner %s] Failed to commit after mark_failed: %s", self.lesson.id, e)
 
     async def _save_recording(self, wav_data: bytes) -> None:
         """Сохранить запись аудио урока в S3."""

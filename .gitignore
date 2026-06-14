@@ -17,6 +17,10 @@ build/
 .env.local
 .env.*.local
 
+# SSL certificates (generate at deploy time)
+nginx/certs/*.pem
+nginx/certs/*.key
+
 # IDE
 .vscode/
 .idea/

@@ -49,6 +49,19 @@ def list_classes(
 
 
 @router.get(
+    "/tree",
+    response_model=list[ClassReadFull],
+    summary="Полное дерево базы знаний",
+    description="Все классы → разделы → темы за один запрос. Заменяет N+1 вызовов getClassTree.",
+)
+def get_full_tree(
+    db: Session = Depends(get_db),
+    teacher: Teacher = Depends(get_current_teacher),
+):
+    return svc.get_full_tree(db, teacher.id)
+
+
+@router.get(
     "/classes/{class_id}/tree",
     response_model=ClassReadFull,
     summary="Полное дерево класса",
